@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.env
+
+# Virtual environment — never commit this (huge, machine-specific)
+venv/
+env/
+
+# Trained model weights — too large for GitHub (use Git LFS or share separately)
+*.pth
+*.pt
+
+# Dataset — too large for GitHub
+data/
+
+# Uploaded images — user content, not source code
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Output images and flags — generated, not source code
+outputs/results/*
+outputs/flags/*
+!outputs/results/.gitkeep
+!outputs/flags/.gitkeep
+
+# Logs
+logs/moderation_log.json
+
+# IDE
+.vscode/
+.idea/
+
+# Windows
+Thumbs.db
+desktop.ini

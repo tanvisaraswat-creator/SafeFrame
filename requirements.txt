@@ -1,0 +1,23 @@
+# ── SafeFrame · AI Content Moderation System ──────────────────────────────────
+# Install with:  pip install -r requirements.txt
+
+# Web framework
+flask>=3.0.0
+werkzeug>=3.0.0
+
+# AI / ML core
+torch>=2.0.0              # CPU-only is fine; install CUDA variant for GPU speed
+torchvision>=0.15.0
+transformers>=4.36.0      # Hugging Face (includes CLIP)
+Pillow>=10.0.0            # Image loading & manipulation
+
+# Computer vision — blur, mask, image writing
+opencv-python-headless>=4.8.0
+
+# HTTP client (for Sightengine API calls)
+requests>=2.31.0
+
+# Utilities (already in stdlib — no install needed)
+# json, uuid, hashlib, logging, pathlib — all stdlib
+# NOTE: sklearn intentionally excluded — blocked by Application Control policy.
+#       F1 score and confusion matrix are computed manually in evaluate.py.
