@@ -1,39 +1,54 @@
-# Python
+# ── Virtual Environment ────────────────────────────────────────────────────────
+venv/
+env/
+.venv/
+
+# ── Python Cache ───────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 *.egg-info/
-.env
 
-# Virtual environment — never commit this (huge, machine-specific)
-venv/
-env/
-
-# Trained model weights — too large for GitHub (use Git LFS or share separately)
+# ── Model Weights (too large for GitHub — share via Google Drive or Git LFS) ───
 *.pth
 *.pt
+*.ckpt
 
-# Dataset — too large for GitHub
+# ── Dataset (too large for GitHub) ────────────────────────────────────────────
 data/
 
-# Uploaded images — user content, not source code
-static/uploads/*
-!static/uploads/.gitkeep
-
-# Output images and flags — generated, not source code
+# ── Generated Output (created at runtime, not source code) ────────────────────
 outputs/results/*
 outputs/flags/*
+outputs/demo_report.csv
 !outputs/results/.gitkeep
 !outputs/flags/.gitkeep
 
-# Logs
-logs/moderation_log.json
+# ── Uploaded Images (user content, not source code) ───────────────────────────
+static/uploads/*
+!static/uploads/.gitkeep
 
-# IDE
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/moderation_log.json
+!logs/.gitkeep
+
+# ── API Keys and Secrets ───────────────────────────────────────────────────────
+.env
+.env.local
+secrets.json
+
+# ── IDE / Editor ──────────────────────────────────────────────────────────────
 .vscode/
 .idea/
+*.sublime-project
+*.sublime-workspace
 
-# Windows
+# ── macOS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+
+# ── Windows ────────────────────────────────────────────────────────────────────
 Thumbs.db
 desktop.ini
+ehthumbs.db
