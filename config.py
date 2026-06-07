@@ -23,7 +23,11 @@ DROPOUT_RATE   = 0.4
 HIDDEN_DIM     = 512          # Linear(2048 → 512 → 5)
 
 # ── Class Names (index order matters — must match training labels) ──────────────
-CLASS_NAMES    = ["neutral", "sexy", "porn", "hentai", "drawings"]
+# IMPORTANT: torchvision's ImageFolder assigns label indices ALPHABETICALLY by
+# folder name during training. The order below MUST match that exactly, or
+# predictions will be silently mislabelled (verified bug — fixed 2026-06-07).
+# Alphabetical order of our 5 folders: drawings, hentai, neutral, porn, sexy
+CLASS_NAMES    = ["drawings", "hentai", "neutral", "porn", "sexy"]
 
 # SAFE classes: model will PASS these
 SAFE_CLASSES   = ["neutral", "drawings"]

@@ -1,6 +1,6 @@
 filename,class,confidence,action,output_path
-029c8e2a90fb460181fe233e940d1377.png,drawings,96.1,passed,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\029c8e2a90fb460181fe233e940d1377.png
-0cf55a448d6a4196a130664261ef09dd.png,porn,100.0,masked,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\0cf55a448d6a4196a130664261ef09dd.png
-13b68b21818e40098588b70656f82a44.png,porn,100.0,masked,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\13b68b21818e40098588b70656f82a44.png
-216941c91c204af28fa145d53b421aa2.png,porn,100.0,masked,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\216941c91c204af28fa145d53b421aa2.png
-3471586df8114c87b3fea7417154397e.png,porn,100.0,masked,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\3471586df8114c87b3fea7417154397e.png
+sample_1_neutral.jpg,neutral,100.0,passed,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\sample_1_neutral.jpg
+sample_2_sexy.jpg,sexy,100.0,blurred,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\sample_2_sexy.jpg
+sample_3_porn.jpg,porn,100.0,masked,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\sample_3_porn.jpg
+sample_4_hentai.jpg,hentai,100.0,masked,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\sample_4_hentai.jpg
+sample_5_drawings.jpg,drawings,100.0,passed,C:\Users\Tanvi\Desktop\imb360\content-moderation-system\outputs\results\sample_5_drawings.jpg
