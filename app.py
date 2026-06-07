@@ -210,11 +210,9 @@ def logout():
 
 
 STATUS_LABELS = {
-    "pending":           "Pending",
-    "auto_approved":     "Auto-Approved",
-    "manually_approved": "Manually Approved",
-    "auto_denied":       "Auto-Denied",
-    "manually_denied":   "Manually Denied",
+    "pending":  "Pending Admin Decision",
+    "approved": "Approved by Admin",
+    "denied":   "Denied by Admin",
 }
 
 
@@ -281,7 +279,7 @@ def _customer_dashboard(user):
             "id":            b["id"],
             "name":          b["name"],
             "upload_count":  upload_counts.get(b["id"], 0),
-            "request_status": latest_status.get(b["id"]),   # None | pending | auto_approved | ...
+            "request_status": latest_status.get(b["id"]),   # None | pending | approved | denied
         })
 
     approved_owner_ids = store.approved_owner_ids(user["id"])
@@ -319,13 +317,13 @@ def admin():
                 "customer_email": cust.get("email", ""),
                 "owner_name": owner.get("name", "Unknown")}
 
-    needs_review  = [_enrich(r) for r in requests_ if r["status"] == "pending"]
-    auto_approved = [_enrich(r) for r in requests_ if r["status"] in ("auto_approved", "manually_approved")]
-    auto_denied   = [_enrich(r) for r in requests_ if r["status"] in ("auto_denied", "manually_denied")]
-
-    today = datetime.now(timezone.utc).date().isoformat()
-    auto_approved_today = len([r for r in requests_
-                               if r["status"] == "auto_approved" and r["created_at"][:10] == today])
+    # Single source of truth: every request the admin still needs to decide on.
+    # Auto R&D never decides — it only attaches a ready-made report (trust score,
+    # risk level, recommendation, signal breakdown, AI summary) to each one.
+    pending_requests = [_enrich(r) for r in requests_ if r["status"] == "pending"]
+    decided_today = len([r for r in requests_
+                         if r["status"] in ("approved", "denied")
+                         and r.get("decided_at", "")[:10] == datetime.now(timezone.utc).date().isoformat()])
 
     flagged = [u for u in uploads if u.get("blocked") or u.get("blurred")]
 
@@ -350,8 +348,8 @@ def admin():
     stats = {
         "total_users":          len(users),
         "total_uploads":        len(uploads),
-        "pending_manual":       len(needs_review),
-        "auto_approved_today":  auto_approved_today,
+        "pending_manual":       len(pending_requests),
+        "decided_today":        decided_today,
         "flagged":              len(flagged),
     }
 
@@ -367,8 +365,7 @@ def admin():
     }
 
     return render_template("admin.html", user=user, users=users,
-                           needs_review=needs_review, auto_approved=auto_approved,
-                           auto_denied=auto_denied, stats=stats, recent=recent,
+                           pending_requests=pending_requests, stats=stats, recent=recent,
                            status_labels=STATUS_LABELS, chart_days=chart_days, donut=donut)
 
 
@@ -449,7 +446,8 @@ def request_access():
     if word_count < 15:
         return jsonify({"error": "Please explain your reason in at least 15 words."}), 400
 
-    # ── Run the fully-automatic R&D engine — instant decision, no human needed ──
+    # ── Auto R&D INVESTIGATES instantly — it never decides. The request always
+    #    lands as "pending" in front of the admin, with a full report attached. ──
     past = store.requests_by_customer(user["id"])
     rd_result = auto_rd.evaluate_request(
         customer=user,
@@ -458,15 +456,16 @@ def request_access():
         past_denials=store.count_denials(user["id"]),
     )
     entry = store.add_request(user["id"], owner_id, reason, rd_result)
-    logger.info("[AUTO-RD] %s -> %s | score=%s | decision=%s",
-                user["email"], owner["email"], rd_result["total"], rd_result["decision"])
+    logger.info("[AUTO-RD] investigated %s -> %s | score=%s | risk=%s | recommendation=%s (admin will decide)",
+                user["email"], owner["email"], rd_result["total"], rd_result["risk_level"], rd_result["recommendation"])
 
     return jsonify({
         "success": True,
         "request": entry,
         "trust_score": rd_result["total"],
-        "decision": rd_result["decision"],
-        "message": rd_result["message"],
+        "risk_level": rd_result["risk_level"],
+        "recommendation": rd_result["recommendation"],
+        "summary": rd_result["summary"],
         "breakdown": rd_result["breakdown"],
     }), 200
 
@@ -474,16 +473,16 @@ def request_access():
 @app.route("/approve-request", methods=["POST"])
 @admin_required
 def approve_request():
-    # WHAT: admin approves/denies a pending request, or overrides any auto decision
-    # WHY:  admin is the sole human gatekeeper — brands cannot decide for themselves
-    # IN:   request_id, decision (manually_approved | manually_denied), note (optional reason)
+    # WHAT: admin makes the FINAL (and only) decision on an access request
+    # WHY:  Auto R&D only investigates and recommends — the admin always decides
+    # IN:   request_id, decision ("approved" | "denied"), note (optional reason)
     # OUT:  JSON success / error
     user       = current_user()
     request_id = request.form.get("request_id", "")
     decision   = request.form.get("decision", "")
     note       = request.form.get("note", "").strip()
 
-    if decision not in ("manually_approved", "manually_denied"):
+    if decision not in ("approved", "denied"):
         return jsonify({"error": "Invalid decision."}), 400
 
     target = next((r for r in store.load_requests() if r["id"] == request_id), None)
@@ -491,7 +490,7 @@ def approve_request():
         return jsonify({"error": "Request not found."}), 404
 
     store.set_request_status(request_id, decision, note)
-    logger.info("[ADMIN] request %s -> %s (by %s)%s", request_id, decision, user["email"],
+    logger.info("[ADMIN] request %s -> %s (decided by %s)%s", request_id, decision, user["email"],
                 f" — {note}" if note else "")
     return jsonify({"success": True, "status": decision}), 200
 

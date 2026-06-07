@@ -155,8 +155,10 @@ def save_requests(reqs: list) -> None:
 
 
 def add_request(customer_id: str, owner_id: str, reason: str, rd_result: dict) -> dict:
-    # WHAT: create an access request, already scored & decided by auto_rd
-    # WHY:  every request is evaluated instantly — nothing sits "unscored"
+    # WHAT: create an access request — Auto R&D investigates instantly, but the
+    #       request ALWAYS starts as "pending" because only the admin decides
+    # WHY:  the engine is an investigator, not a judge — every request must
+    #       land in front of the admin with a ready-made report attached
     # IN:   customer_id, owner_id, reason (free text), rd_result (dict from auto_rd.evaluate_request)
     # OUT:  the saved request dict
     reqs = load_requests()
@@ -165,11 +167,12 @@ def add_request(customer_id: str, owner_id: str, reason: str, rd_result: dict) -
         "customer_id": customer_id,
         "owner_id": owner_id,
         "reason": reason,
-        # status: pending | auto_approved | auto_denied | manually_approved | manually_denied
-        "status": rd_result["decision"],
+        "status": "pending",                          # pending | approved | denied — admin-decided only
         "trust_score": rd_result["total"],
         "score_breakdown": rd_result["breakdown"],
-        "decision_message": rd_result["message"],
+        "risk_level": rd_result["risk_level"],         # LOW | MEDIUM | HIGH
+        "recommendation": rd_result["recommendation"], # APPROVE | REVIEW | REJECT
+        "ai_summary": rd_result["summary"],
         "admin_note": "",
         "deny_reason": "",
         "created_at": now_iso(),
@@ -180,16 +183,17 @@ def add_request(customer_id: str, owner_id: str, reason: str, rd_result: dict) -
 
 
 def set_request_status(request_id: str, status: str, note: str = "") -> bool:
-    # WHAT: change a request's status (admin decision or override) and save
-    # WHY:  admin can approve/deny pending requests, or override any auto decision
-    # IN:   request_id, status (manually_approved | manually_denied), note (admin's reason/comment)
+    # WHAT: record the admin's final decision on a request
+    # WHY:  this is the ONLY way a request's status ever changes — Auto R&D
+    #       never decides, it only attaches its report when the request is created
+    # IN:   request_id, status ("approved" | "denied"), note (admin's reason/comment)
     # OUT:  True if updated, else False
     reqs = load_requests()
     for r in reqs:
         if r["id"] == request_id:
             r["status"] = status
             r["decided_at"] = now_iso()
-            if status == "manually_denied":
+            if status == "denied":
                 r["deny_reason"] = note
             else:
                 r["admin_note"] = note
@@ -214,12 +218,11 @@ def count_denials(customer_id: str) -> int:
     # WHY:  auto_rd's "denial history" signal needs this number
     # IN:   customer_id
     # OUT:  integer count of auto_denied + manually_denied requests
-    return len([r for r in requests_by_customer(customer_id)
-                if r["status"] in ("auto_denied", "manually_denied")])
+    return len([r for r in requests_by_customer(customer_id) if r["status"] == "denied"])
 
 
-APPROVED_STATUSES = ("auto_approved", "manually_approved")
-DENIED_STATUSES   = ("auto_denied", "manually_denied")
+APPROVED_STATUSES = ("approved",)
+DENIED_STATUSES   = ("denied",)
 
 
 def approved_owner_ids(customer_id: str) -> set:
