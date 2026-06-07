@@ -5,17 +5,17 @@
 flask>=3.0.0
 werkzeug>=3.0.0
 
-# AI / ML core
+# AI / ML core — our own trained ResNet50 model, no third-party AI APIs
 torch>=2.0.0              # CPU-only is fine; install CUDA variant for GPU speed
 torchvision>=0.15.0
-transformers>=4.36.0      # Hugging Face (includes CLIP)
 Pillow>=10.0.0            # Image loading & manipulation
 
 # Computer vision — blur, mask, image writing
 opencv-python-headless>=4.8.0
 
-# HTTP client (for Sightengine API calls)
-requests>=2.31.0
+# NOTE: Sightengine API + CLIP/transformers removed (2026-06-07).
+#       SafeFrame now runs 100% on safeframe_model.pth — no external
+#       network calls, no API keys, no `requests` / `transformers` needed.
 
 # Utilities (already in stdlib — no install needed)
 # json, uuid, hashlib, logging, pathlib — all stdlib

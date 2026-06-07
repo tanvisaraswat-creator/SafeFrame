@@ -19,6 +19,7 @@ import os
 import json
 import uuid
 import logging
+import cv2
 from pathlib import Path
 from datetime import datetime, timezone
 from werkzeug.utils import secure_filename
@@ -27,6 +28,7 @@ from flask import (
     render_template, abort,
 )
 from moderation_engine import ModerationEngine, report_to_dict, CONTEXT_PROFILES
+from moderate import apply_blur, apply_mask
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
 BASE_DIR        = Path(__file__).parent
@@ -167,7 +169,7 @@ def upload_image():
         logger.error("File save failed: %s", exc)
         return jsonify({"error": "Failed to save uploaded file."}), 500
 
-    # ── Run AI moderation ──────────────────────────────────────────────────────
+    # ── Run AI moderation (our own ResNet50 — no external APIs) ────────────────
     try:
         eng = get_engine()
         context = request.form.get("context", "standard")
@@ -180,6 +182,26 @@ def upload_image():
         # Clean up the saved file on error
         save_path.unlink(missing_ok=True)
         return jsonify({"error": "AI moderation engine error.", "detail": str(exc)}), 500
+
+    # ── Apply OpenCV blur/mask directly on the served file if unsafe ───────────
+    # porn / hentai → hard black mask | sexy → heavy Gaussian blur | else → untouched
+    try:
+        if report.blurred:
+            image_bgr = cv2.imread(str(save_path))
+            if report.raw_class in ("porn", "hentai"):
+                filtered = apply_mask(image_bgr)
+                result["filter_applied"] = "masked"
+            else:
+                filtered = apply_blur(image_bgr)
+                result["filter_applied"] = "blurred"
+            cv2.imwrite(str(save_path), filtered)
+            logger.info("[MODERATE] %s → %s %.1f%% → %s",
+                        file.filename, report.raw_class, report.confidence_pct, result["filter_applied"])
+        else:
+            result["filter_applied"] = "none"
+    except Exception as exc:
+        logger.warning("OpenCV filtering failed (image still served unfiltered): %s", exc)
+        result["filter_applied"] = "none"
 
     # ── Persist log ────────────────────────────────────────────────────────────
     append_log(result)

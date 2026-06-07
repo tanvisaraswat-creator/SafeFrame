@@ -48,12 +48,9 @@ MASK_COLOR     = (0, 0, 0)    # Black rectangle for hard mask (BGR format)
 IMAGENET_MEAN  = [0.485, 0.456, 0.406]
 IMAGENET_STD   = [0.229, 0.224, 0.225]
 
-# ── Sightengine API (moved here from moderation_engine.py) ────────────────────
-import os
-SE_API_USER    = os.environ.get("SE_API_USER",   "1660066943")
-SE_API_SECRET  = os.environ.get("SE_API_SECRET", "YeCCaDVFjCq3EFo7Pniv9qt6PWELEbii")
-SE_URL         = "https://api.sightengine.com/1.0/check.json"
-SE_MODELS      = "nudity-2.0,wad,offensive,gore,violence"
+# NOTE: Sightengine API has been completely removed (2026-06-07).
+# SafeFrame now runs 100% on our own trained ResNet50 model — no
+# third-party APIs, no external network calls, no API keys to manage.
 
 # ── Demo Settings ──────────────────────────────────────────────────────────────
 DEMO_IMAGE_COUNT  = 5         # how many images to pick from uploads for demo
