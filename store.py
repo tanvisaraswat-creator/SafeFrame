@@ -145,6 +145,27 @@ def uploads_for_user(owner_id: str) -> list:
     return [u for u in load_uploads() if u["owner_id"] == owner_id]
 
 
+def find_upload_by_id(upload_id: str):
+    for u in load_uploads():
+        if u["id"] == upload_id:
+            return u
+    return None
+
+
+def delete_upload(upload_id: str):
+    # WHAT: remove an upload record from the store
+    # WHY:  brands need to be able to delete their own images; admins any image
+    # IN:   upload_id
+    # OUT:  the removed upload dict (so the caller can also delete its file), or None
+    uploads = load_uploads()
+    for i, u in enumerate(uploads):
+        if u["id"] == upload_id:
+            removed = uploads.pop(i)
+            save_uploads(uploads)
+            return removed
+    return None
+
+
 # ── Access Requests ────────────────────────────────────────────────────────────
 def load_requests() -> list:
     return _load(REQUESTS_FILE, [])

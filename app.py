@@ -428,6 +428,44 @@ def user_upload():
     return jsonify({"success": True, "upload": saved}), 200
 
 
+@app.route("/delete-upload", methods=["POST"])
+@login_required
+def delete_upload():
+    # WHAT: permanently remove an uploaded image — its file AND its record
+    # WHY:  brands need to be able to clean up their own gallery; admins can
+    #       remove any image (e.g. moderation cleanup)
+    # IN:   upload_id (form field)
+    # OUT:  JSON success / error
+    user      = current_user()
+    upload_id = request.form.get("upload_id", "").strip()
+    if not upload_id:
+        return jsonify({"error": "upload_id is required."}), 400
+
+    target = store.find_upload_by_id(upload_id)
+    if not target:
+        return jsonify({"error": "Upload not found."}), 404
+
+    # Only the owning brand — or an admin — may delete
+    if user["role"] != "admin" and target["owner_id"] != user["id"]:
+        abort(403)
+
+    removed = store.delete_upload(upload_id)
+    if not removed:
+        return jsonify({"error": "Upload not found."}), 404
+
+    stored_name = removed.get("stored_filename")
+    if stored_name:
+        file_path = UPLOAD_DIR / stored_name
+        try:
+            file_path.unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning("[DELETE] could not remove file %s: %s", file_path, exc)
+
+    logger.info("[DELETE] upload %s (%s) removed by %s", upload_id,
+                removed.get("filename"), user["email"])
+    return jsonify({"success": True, "deleted_id": upload_id}), 200
+
+
 # ─── Access requests — customer asks, Auto R&D decides instantly ──────────────
 @app.route("/request-access", methods=["POST"])
 @login_required

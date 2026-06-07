@@ -82,8 +82,14 @@ h1{font-size:24px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px;color:
 .uz-sub{font-size:12px;color:var(--text3)}
 
 .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
-.g-card{border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.04);animation:fadeUp .4s ease both}
+.g-card{position:relative;border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.04);animation:fadeUp .4s ease both;transition:opacity .2s,transform .2s}
+.g-card.removing{opacity:0;transform:scale(.92)}
 .g-thumb{position:relative;aspect-ratio:4/3;background:#eee;overflow:hidden}
+.del-btn{position:absolute;top:8px;right:8px;z-index:5;width:30px;height:30px;border-radius:50%;
+  background:rgba(255,255,255,.92);color:var(--danger);display:flex;align-items:center;justify-content:center;
+  font-size:14px;opacity:0;transform:translateY(-4px);transition:all .15s;box-shadow:0 2px 8px rgba(0,0,0,.15);border:1px solid var(--dangerbg)}
+.g-card:hover .del-btn{opacity:1;transform:translateY(0)}
+.del-btn:hover{background:var(--dangerbg)}
 .g-thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:filter .3s}
 .g-thumb img.blurred{filter:blur(20px) saturate(.6)}
 .g-thumb img.masked{filter:brightness(0)}
@@ -191,7 +197,8 @@ tr:hover td{background:var(--input)}
         {% if uploads %}
         <div class="gallery" id="gallery">
           {% for u in uploads %}
-          <div class="g-card">
+          <div class="g-card" id="card-{{ u.id }}">
+            <button class="del-btn" title="Delete this image" onclick="confirmDelete('{{ u.id }}','{{ u.filename }}')">🗑</button>
             <div class="g-thumb">
               {% set rc = u.raw_class %}
               {% if rc in ['neutral','drawings'] %}
@@ -303,6 +310,43 @@ function reveal(btn){
   const card=btn.closest('.g-thumb');
   card.querySelector('img').classList.remove('blurred');
   card.querySelector('.g-ov').remove();
+}
+
+function confirmDelete(uploadId, filename){
+  if(!window.confirm('Delete this image? This cannot be undone.')) return;
+  deleteUpload(uploadId);
+}
+
+async function deleteUpload(uploadId){
+  const fd=new FormData(); fd.append('upload_id', uploadId);
+  try{
+    const res=await fetch('/delete-upload',{method:'POST',body:fd});
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error||'Delete failed');
+    const card=$('card-'+uploadId);
+    if(card){
+      card.classList.add('removing');
+      setTimeout(()=>{
+        card.remove();
+        decrementStats();
+        const gallery=$('gallery');
+        if(gallery && !gallery.querySelector('.g-card')) location.reload(); // show empty state
+      }, 220);
+    }
+    toast('Image deleted');
+  }catch(e){ toast('Error: '+e.message,true) }
+}
+
+function decrementStats(){
+  // WHAT: keep the "Images Moderated" stat (and nothing else — we don't know
+  //       which safe/sensitive/blocked bucket the deleted image was in without
+  //       a reload) in sync immediately after a delete
+  // WHY:  instant visual feedback; a full reload would also be correct but slower
+  const totalEl = document.querySelector('.stat-card .v');
+  if(totalEl){
+    const n = parseInt(totalEl.textContent, 10);
+    if(!isNaN(n) && n > 0) totalEl.textContent = n - 1;
+  }
 }
 </script>
 </body>
