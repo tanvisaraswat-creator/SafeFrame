@@ -37,8 +37,8 @@ UNSAFE_CLASSES = ["sexy", "porn", "hentai"]
 
 # ── Decision Thresholds ────────────────────────────────────────────────────────
 CONFIDENCE_THRESHOLD = 0.50   # below this → FLAG FOR REVIEW, don't auto-blur
-BLUR_THRESHOLD       = 0.50   # >= this + unsafe class → apply Gaussian blur
-FLAG_THRESHOLD       = 0.40   # >= this → save a JSON flag file
+BLUR_THRESHOLD       = 0.35   # >= this + unsafe class → apply Gaussian blur (lowered — catches lower-confidence hits, e.g. explicit content diluted inside screenshots)
+FLAG_THRESHOLD       = 0.25   # >= this → save a JSON flag file (lowered to match — act on weaker signals too)
 
 # ── OpenCV Blur Settings ───────────────────────────────────────────────────────
 BLUR_KERNEL    = (51, 51)     # Gaussian blur kernel size (must be odd numbers)

@@ -16,6 +16,7 @@ import json
 import logging
 import hashlib
 import time
+from collections import Counter
 import torch
 from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
@@ -75,6 +76,56 @@ CONTEXT_PROFILES = {
 }
 
 DEFAULT_CONTEXT = "standard"
+
+# ─── Screenshot / Patch-Ensemble Detection ───────────────────────────────────
+# WHY: a single whole-image inference on a browser screenshot gets diluted by
+# tabs, chrome, taskbars and surrounding thumbnails — explicit content tucked
+# in one corner can score as "neutral" overall. To catch it, large images are
+# additionally sliced into overlapping patches; every image (large or not)
+# also gets two zoomed-in centre crops, since explicit content is usually
+# centred in a frame. The single most-unsafe finding across all of these wins.
+SCREENSHOT_MIN_W   = 1200      # treat as a screenshot if wider than this …
+SCREENSHOT_MIN_H   = 900       # … or taller than this
+PATCH_UNSAFE_CONF  = 0.45      # a patch counts as a "hit" at/above this confidence
+UNSAFE_RAW_CLASSES = {"sexy", "porn", "hentai"}
+_UNSAFE_RANK       = {"porn": 3, "hentai": 3, "sexy": 1, "neutral": 0, "drawings": 0}
+
+
+def _grid_patches(image: Image.Image, rows: int = 3, cols: int = 3) -> list:
+    """Slice an image into a rows x cols grid of non-overlapping crops."""
+    w, h = image.size
+    patches = []
+    for r in range(rows):
+        for c in range(cols):
+            left, upper   = int(c * w / cols), int(r * h / rows)
+            right, lower  = int((c + 1) * w / cols), int((r + 1) * h / rows)
+            if right > left and lower > upper:
+                patches.append(image.crop((left, upper, right, lower)))
+    return patches
+
+
+def _overlapping_center_patches(image: Image.Image) -> list:
+    """Four half-sized crops straddling the image centre from different angles —
+    these overlap the 3x3 grid lines, so content sitting on a seam isn't missed."""
+    w, h = image.size
+    pw, ph = max(1, w // 2), max(1, h // 2)
+    cx, cy = w // 2, h // 2
+    offsets = [(-pw // 4, -ph // 4), (pw // 4, -ph // 4),
+               (-pw // 4,  ph // 4), (pw // 4,  ph // 4)]
+    patches = []
+    for ox, oy in offsets:
+        left  = max(0, min(w - pw, cx - pw // 2 + ox))
+        upper = max(0, min(h - ph, cy - ph // 2 + oy))
+        patches.append(image.crop((left, upper, left + pw, upper + ph)))
+    return patches
+
+
+def _center_crop(image: Image.Image, frac: float) -> Image.Image:
+    """A zoomed-in crop of the given fraction of width/height, centred."""
+    w, h = image.size
+    cw, ch = max(1, int(w * frac)), max(1, int(h * frac))
+    left, upper = (w - cw) // 2, (h - ch) // 2
+    return image.crop((left, upper, left + cw, upper + ch))
 
 def get_profile(context: str) -> dict:
     return CONTEXT_PROFILES.get(context, CONTEXT_PROFILES[DEFAULT_CONTEXT])
@@ -191,6 +242,62 @@ class ModerationEngine:
         confidence, idx = probs.max(dim=0)
         return CLASS_NAMES[idx.item()], confidence.item(), probs.tolist()
 
+    # ── Screenshot-aware ensemble inference ────────────────────────────────────
+    def _classify_ensemble(self, image: Image.Image) -> tuple:
+        """
+        Run multiple crops through the model and return the single most-unsafe
+        finding, instead of trusting one whole-image pass that browser chrome /
+        thumbnails / surrounding "neutral" pixels can dilute.
+
+        Always checked: the full image, plus a 60% and a 40% centre crop
+        (explicit content tends to sit centred in a frame).
+        Large images ("screenshots" — wider than 1200px or taller than 900px)
+        additionally get a 3x3 grid (9 patches) plus 4 overlapping centre
+        patches — 13 extra crops — run through the model too.
+
+        Voting:
+          • if 2+ crops agree on the same unsafe class -> that class wins
+            (highest-confidence agreeing crop is reported)
+          • else if any single crop is unsafe at >= PATCH_UNSAFE_CONF -> the
+            most-unsafe (highest rank, then highest confidence) one wins
+          • else -> fall back to the whole-image result (so far, all neutral)
+
+        Returns (class_name, confidence, raw_probs) — same shape as _classify().
+        """
+        w, h = image.size
+        candidates = [self._classify(image)]                      # 1) whole image
+
+        for frac in (0.6, 0.4):                                   # 2) centre zooms
+            candidates.append(self._classify(_center_crop(image, frac)))
+
+        is_screenshot = w > SCREENSHOT_MIN_W or h > SCREENSHOT_MIN_H
+        if is_screenshot:                                          # 3) patch grid
+            patches = _grid_patches(image, 3, 3) + _overlapping_center_patches(image)
+            for patch in patches:
+                if patch.size[0] >= 8 and patch.size[1] >= 8:
+                    candidates.append(self._classify(patch))
+            logger.info("[ENSEMBLE] screenshot mode (%dx%d) — checked %d crops total",
+                        w, h, len(candidates))
+
+        unsafe_hits = [c for c in candidates if c[0] in UNSAFE_RAW_CLASSES]
+        if not unsafe_hits:
+            return candidates[0]
+
+        # Rule A — two or more crops agree on the same unsafe class
+        votes = Counter(cls for cls, _, _ in unsafe_hits)
+        agreed = [cls for cls, n in votes.items() if n >= 2]
+        if agreed:
+            best_cls = max(agreed, key=lambda c: _UNSAFE_RANK.get(c, 0))
+            return max((c for c in unsafe_hits if c[0] == best_cls), key=lambda c: c[1])
+
+        # Rule B — any single crop crosses the unsafe-confidence floor
+        strong = [c for c in unsafe_hits if c[1] >= PATCH_UNSAFE_CONF]
+        if strong:
+            return max(strong, key=lambda c: (_UNSAFE_RANK.get(c[0], 0), c[1]))
+
+        # Nothing strong enough — trust the whole-image pass
+        return candidates[0]
+
     @staticmethod
     def _to_label_probs(raw_probs: list) -> list:
         """Convert our 5-class probs into the [SAFE,ADULT,VIOLENT,SENSITIVE,HATE] vector."""
@@ -234,7 +341,11 @@ class ModerationEngine:
             file_hash = hashlib.sha256(fh.read()).hexdigest()[:16]
 
         # ── Run inference with our own trained model ──────────────────────────
-        raw_class, raw_confidence, raw_probs = self._classify(image)
+        # Screenshot-aware ensemble: checks the whole image, zoomed centre crops,
+        # and (for large/screenshot-sized images) a grid of patches — so explicit
+        # content tucked into a corner of a browser screenshot can't hide behind
+        # surrounding "neutral" chrome and thumbnails diluting a single pass.
+        raw_class, raw_confidence, raw_probs = self._classify_ensemble(image)
         probs = self._to_label_probs(raw_probs)
 
         # ── Decision ──────────────────────────────────────────────────────────
