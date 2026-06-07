@@ -163,7 +163,7 @@ tr:hover td{background:var(--input)}
 
   <div class="main">
     <h1>Welcome back, {{ user.name.split(' ')[0] }}</h1>
-    <div class="sub">Your uploads are private by default. The admin team controls who gets access to your content.</div>
+    <div class="sub">Your uploads stay private by default — only people you approve can see them. Drop an image below and SafeFrame will screen it instantly.</div>
 
     <div class="layout">
       <div>
@@ -189,7 +189,7 @@ tr:hover td{background:var(--input)}
         <div class="upload-zone" id="uz">
           <input type="file" id="fi" accept="image/*"/>
           <div class="uz-icon">📤</div>
-          <div class="uz-title">Drag & drop an image to moderate and store it</div>
+          <div class="uz-title">Drag & drop an image to scan and store it securely</div>
           <div class="uz-sub">PNG, JPG, GIF, WEBP · up to 16 MB</div>
         </div>
 
@@ -216,7 +216,7 @@ tr:hover td{background:var(--input)}
               <div class="g-meta">
                 {% set v='safe' %}
                 {% if u.action in ['BLOCK','RESTRICT'] %}{% set v='blocked' %}{% elif u.action in ['BLUR_WARNING','FLAG_FOR_REVIEW'] %}{% set v='sensitive' %}{% endif %}
-                <span class="tag {{ v }}">{{ u.raw_class }} · {{ u.confidence_pct }}%</span>
+                <span class="tag {{ v }}">{{ u.raw_class|replace('sexy','Mature Content')|replace('porn','Explicit')|replace('hentai','Illustrated Explicit')|replace('neutral','General')|replace('drawings','Illustrated') }} · {{ u.confidence_pct }}%</span>
                 <span>{{ u.created_at[:10] }}</span>
               </div>
             </div>
@@ -265,7 +265,7 @@ tr:hover td{background:var(--input)}
           <div class="feed-item">
             <span class="feed-dot" style="background:{{ dotc }}"></span>
             <div>
-              <div class="feed-txt"><b>{{ u.filename[:18] }}</b> → {{ lbl }} ({{ u.raw_class }} {{ u.confidence_pct }}%)</div>
+              <div class="feed-txt"><b>{{ u.filename[:18] }}</b> → {{ lbl }} ({{ u.raw_class|replace('sexy','Mature Content')|replace('porn','Explicit')|replace('hentai','Illustrated Explicit')|replace('neutral','General')|replace('drawings','Illustrated') }} {{ u.confidence_pct }}%)</div>
               <div class="feed-time">{{ u.created_at[:16].replace('T',' ') }}</div>
             </div>
           </div>
@@ -301,7 +301,8 @@ async function upload(file){
     const res=await fetch('/upload',{method:'POST',body:fd});
     const data=await res.json();
     if(!res.ok) throw new Error(data.error||'Upload failed');
-    toast('Uploaded — classified as '+data.upload.raw_class+' ('+data.upload.confidence_pct+'%)');
+    const _rcLabels={sexy:'Mature Content',porn:'Explicit',hentai:'Illustrated Explicit',neutral:'General',drawings:'Illustrated'};
+    toast('Uploaded — classified as '+(_rcLabels[data.upload.raw_class]||data.upload.raw_class)+' ('+data.upload.confidence_pct+'%)');
     setTimeout(()=>location.reload(),900);
   }catch(e){ toast('Error: '+e.message,true) }
 }

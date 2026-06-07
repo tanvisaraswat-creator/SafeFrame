@@ -311,7 +311,8 @@ function render(r){
 
   /* details */
   $('action').textContent=actionLabel[act]||act;
-  $('cls').textContent=r.raw_class||'—';
+  const _rcLabels={sexy:'Mature Content',porn:'Explicit',hentai:'Illustrated Explicit',neutral:'General',drawings:'Illustrated'};
+  $('cls').textContent=(_rcLabels[r.raw_class]||r.raw_class)||'—';
   $('ptime').textContent=r.processing_time_ms+' ms';
   $('verdict').textContent=verdict;
   $('verdict').style.color=({safe:'var(--safe)',sensitive:'var(--warn)',blocked:'var(--danger)'})[vClass];
