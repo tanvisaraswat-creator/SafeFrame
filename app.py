@@ -31,6 +31,7 @@ from flask import (
 from moderation_engine import ModerationEngine, report_to_dict, CONTEXT_PROFILES
 from moderate import apply_blur, apply_mask
 import store
+import auto_rd
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
 BASE_DIR        = Path(__file__).parent
@@ -208,6 +209,15 @@ def logout():
     return redirect(url_for("login"))
 
 
+STATUS_LABELS = {
+    "pending":           "Pending",
+    "auto_approved":     "Auto-Approved",
+    "manually_approved": "Manually Approved",
+    "auto_denied":       "Auto-Denied",
+    "manually_denied":   "Manually Denied",
+}
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -215,19 +225,75 @@ def dashboard():
     if user["role"] == "admin":
         return redirect(url_for("admin"))
 
-    my_uploads = store.uploads_for_user(user["id"])
-    incoming   = store.requests_for_owner(user["id"], status="pending")
-    customers  = {u["id"]: u for u in store.load_users()}
+    if user["role"] == "customer":
+        return _customer_dashboard(user)
 
-    # attach requester names + per-upload pending request lists
-    incoming_view = []
-    for r in incoming:
-        cust = customers.get(r["customer_id"], {})
-        incoming_view.append({**r, "customer_name": cust.get("name", "Unknown"),
+    # ── Brand dashboard ────────────────────────────────────────────────────
+    my_uploads = store.uploads_for_user(user["id"])
+    approved   = store.requests_for_owner(user["id"])
+    by_id      = {u["id"]: u for u in store.load_users()}
+
+    approved_view = []
+    for r in approved:
+        if r["status"] not in store.APPROVED_STATUSES:
+            continue
+        cust = by_id.get(r["customer_id"], {})
+        approved_view.append({**r, "customer_name": cust.get("name", "Unknown"),
                               "customer_email": cust.get("email", "")})
 
     return render_template("user_dashboard.html", user=user,
-                           uploads=my_uploads, requests=incoming_view)
+                           uploads=my_uploads, approved_customers=approved_view,
+                           status_labels=STATUS_LABELS)
+
+
+def _customer_dashboard(user):
+    # WHAT: build everything the customer dashboard template needs
+    # WHY:  customers never upload — they browse brands & track access requests
+    # IN:   user (logged-in customer dict)
+    # OUT:  rendered customer_dashboard.html
+    by_id        = {u["id"]: u for u in store.load_users()}
+    my_requests  = store.requests_by_customer(user["id"])
+    brands       = [u for u in store.load_users() if u["role"] == "brand"]
+    uploads      = store.load_uploads()
+
+    upload_counts = {}
+    for up in uploads:
+        upload_counts[up["owner_id"]] = upload_counts.get(up["owner_id"], 0) + 1
+
+    # latest request status per brand (for Browse Brands button states)
+    latest_status = {}
+    for r in my_requests:
+        if r["owner_id"] not in latest_status:
+            latest_status[r["owner_id"]] = r["status"]
+
+    requests_view = []
+    for r in my_requests:
+        owner = by_id.get(r["owner_id"], {})
+        requests_view.append({
+            **r,
+            "brand_name":  owner.get("name", "Unknown"),
+            "status_label": STATUS_LABELS.get(r["status"], r["status"]),
+        })
+
+    brand_cards = []
+    for b in brands:
+        brand_cards.append({
+            "id":            b["id"],
+            "name":          b["name"],
+            "upload_count":  upload_counts.get(b["id"], 0),
+            "request_status": latest_status.get(b["id"]),   # None | pending | auto_approved | ...
+        })
+
+    approved_owner_ids = store.approved_owner_ids(user["id"])
+    approved_brands    = [b for b in brands if b["id"] in approved_owner_ids]
+    approved_uploads   = [u for u in uploads if u["owner_id"] in approved_owner_ids]
+    for u in approved_uploads:
+        u["owner_name"] = by_id.get(u["owner_id"], {}).get("name", "Unknown")
+
+    return render_template("customer_dashboard.html", user=user,
+                           requests=requests_view, brands=brand_cards,
+                           approved_brands=approved_brands, approved_uploads=approved_uploads,
+                           status_labels=STATUS_LABELS)
 
 
 @app.route("/admin")
@@ -246,21 +312,47 @@ def admin():
     for u in users:
         u["upload_count"] = upload_counts.get(u["id"], 0)
 
-    pending_requests = [r for r in requests_ if r["status"] == "pending"]
-    requests_view = []
-    for r in pending_requests:
+    def _enrich(r):
         cust  = by_id.get(r["customer_id"], {})
         owner = by_id.get(r["owner_id"], {})
-        requests_view.append({**r, "customer_name": cust.get("name", "Unknown"),
-                              "owner_name": owner.get("name", "Unknown")})
+        return {**r, "customer_name": cust.get("name", "Unknown"),
+                "customer_email": cust.get("email", ""),
+                "owner_name": owner.get("name", "Unknown")}
+
+    needs_review  = [_enrich(r) for r in requests_ if r["status"] == "pending"]
+    auto_approved = [_enrich(r) for r in requests_ if r["status"] in ("auto_approved", "manually_approved")]
+    auto_denied   = [_enrich(r) for r in requests_ if r["status"] in ("auto_denied", "manually_denied")]
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    auto_approved_today = len([r for r in requests_
+                               if r["status"] == "auto_approved" and r["created_at"][:10] == today])
 
     flagged = [u for u in uploads if u.get("blocked") or u.get("blurred")]
 
+    # ── chart data: uploads per day (last 7 days) + safe/sensitive/blocked donut ──
+    from datetime import timedelta
+    today_d = datetime.now(timezone.utc).date()
+    day_labels = [(today_d - timedelta(days=i)) for i in range(6, -1, -1)]
+    day_counts = {d.isoformat(): 0 for d in day_labels}
+    for up in uploads:
+        key = up.get("created_at", "")[:10]
+        if key in day_counts:
+            day_counts[key] += 1
+    max_day = max(day_counts.values()) or 1
+    chart_days = [{"label": d.strftime("%a"), "count": day_counts[d.isoformat()],
+                   "pct": round(day_counts[d.isoformat()] / max_day * 100)} for d in day_labels]
+
+    safe_n  = len([u for u in uploads if u.get("action") == "ALLOW"])
+    sens_n  = len([u for u in uploads if u.get("action") in ("BLUR_WARNING", "FLAG_FOR_REVIEW")])
+    block_n = len([u for u in uploads if u.get("action") in ("BLOCK", "RESTRICT")])
+    donut_total = max(safe_n + sens_n + block_n, 1)
+
     stats = {
-        "total_users":   len(users),
-        "total_uploads": len(uploads),
-        "pending":       len(pending_requests),
-        "flagged":       len(flagged),
+        "total_users":          len(users),
+        "total_uploads":        len(uploads),
+        "pending_manual":       len(needs_review),
+        "auto_approved_today":  auto_approved_today,
+        "flagged":              len(flagged),
     }
 
     recent = uploads[:10]
@@ -268,8 +360,16 @@ def admin():
         owner = by_id.get(r["owner_id"], {})
         r["owner_name"] = owner.get("name", "Unknown")
 
+    donut = {
+        "safe":  {"count": safe_n,  "pct": round(safe_n / donut_total * 100)},
+        "sens":  {"count": sens_n,  "pct": round(sens_n / donut_total * 100)},
+        "block": {"count": block_n, "pct": round(block_n / donut_total * 100)},
+    }
+
     return render_template("admin.html", user=user, users=users,
-                           requests=requests_view, stats=stats, recent=recent)
+                           needs_review=needs_review, auto_approved=auto_approved,
+                           auto_denied=auto_denied, stats=stats, recent=recent,
+                           status_labels=STATUS_LABELS, chart_days=chart_days, donut=donut)
 
 
 # ─── Brand-user upload (private, tracked per-account) ─────────────────────────
@@ -331,7 +431,7 @@ def user_upload():
     return jsonify({"success": True, "upload": saved}), 200
 
 
-# ─── Access requests (customer <-> brand user, or admin on their behalf) ──────
+# ─── Access requests — customer asks, Auto R&D decides instantly ──────────────
 @app.route("/request-access", methods=["POST"])
 @login_required
 def request_access():
@@ -339,34 +439,60 @@ def request_access():
     if user["role"] != "customer":
         abort(403)
 
-    owner_id  = request.form.get("owner_id", "")
-    upload_id = request.form.get("upload_id") or None
-    if not store.find_user_by_id(owner_id):
+    owner_id = request.form.get("owner_id", "")
+    reason   = request.form.get("reason", "").strip()
+    owner    = store.find_user_by_id(owner_id)
+    if not owner:
         return jsonify({"error": "Brand not found."}), 404
 
-    entry = store.add_request(user["id"], owner_id, upload_id)
-    logger.info("[ACCESS] %s requested access to %s's content", user["email"], owner_id)
-    return jsonify({"success": True, "request": entry}), 200
+    word_count = len(reason.split())
+    if word_count < 15:
+        return jsonify({"error": "Please explain your reason in at least 15 words."}), 400
+
+    # ── Run the fully-automatic R&D engine — instant decision, no human needed ──
+    past = store.requests_by_customer(user["id"])
+    rd_result = auto_rd.evaluate_request(
+        customer=user,
+        reason=reason,
+        past_request_count=len(past),
+        past_denials=store.count_denials(user["id"]),
+    )
+    entry = store.add_request(user["id"], owner_id, reason, rd_result)
+    logger.info("[AUTO-RD] %s -> %s | score=%s | decision=%s",
+                user["email"], owner["email"], rd_result["total"], rd_result["decision"])
+
+    return jsonify({
+        "success": True,
+        "request": entry,
+        "trust_score": rd_result["total"],
+        "decision": rd_result["decision"],
+        "message": rd_result["message"],
+        "breakdown": rd_result["breakdown"],
+    }), 200
 
 
 @app.route("/approve-request", methods=["POST"])
-@login_required
+@admin_required
 def approve_request():
+    # WHAT: admin approves/denies a pending request, or overrides any auto decision
+    # WHY:  admin is the sole human gatekeeper — brands cannot decide for themselves
+    # IN:   request_id, decision (manually_approved | manually_denied), note (optional reason)
+    # OUT:  JSON success / error
     user       = current_user()
     request_id = request.form.get("request_id", "")
-    decision   = request.form.get("decision", "approved")   # approved | denied
+    decision   = request.form.get("decision", "")
+    note       = request.form.get("note", "").strip()
 
-    reqs = store.load_requests()
-    target = next((r for r in reqs if r["id"] == request_id), None)
+    if decision not in ("manually_approved", "manually_denied"):
+        return jsonify({"error": "Invalid decision."}), 400
+
+    target = next((r for r in store.load_requests() if r["id"] == request_id), None)
     if not target:
         return jsonify({"error": "Request not found."}), 404
 
-    # only the content owner or an admin may decide
-    if user["role"] != "admin" and user["id"] != target["owner_id"]:
-        abort(403)
-
-    store.set_request_status(request_id, decision)
-    logger.info("[ACCESS] request %s -> %s (decided by %s)", request_id, decision, user["email"])
+    store.set_request_status(request_id, decision, note)
+    logger.info("[ADMIN] request %s -> %s (by %s)%s", request_id, decision, user["email"],
+                f" — {note}" if note else "")
     return jsonify({"success": True, "status": decision}), 200
 
 

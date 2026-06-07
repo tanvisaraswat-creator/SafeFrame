@@ -9,48 +9,70 @@
 <style>
 :root{
   --teal:#00B4A6; --green:#7CC242;
-  --text:#1A1A1A; --text2:#6b6b76; --text3:#9c9ca6;
+  --text:#1A1A1A; --text2:#4A4A4A; --text3:#8A8A8A;
   --border:#e7e7ea; --surface:#f7f7f8; --bg:#ffffff;
-  --safe:#16a34a; --warn:#d97706; --danger:#dc2626;
+  --safe:#16a34a; --warn:#d97706; --danger:#dc2626; --pending:#ca8a04;
   --r:14px; --r2:10px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text)}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);position:relative}
 button{cursor:pointer;border:none;font-family:inherit}
 
-header{
-  background:linear-gradient(120deg,var(--teal),var(--green));color:#fff;
-  display:flex;align-items:center;justify-content:space-between;padding:16px 28px;
-}
+body::before{content:'';position:fixed;top:-160px;right:-160px;width:480px;height:480px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,180,166,.16),transparent 70%);z-index:0;pointer-events:none}
+body::after{content:'';position:fixed;bottom:-180px;left:-180px;width:420px;height:420px;border-radius:50%;
+  background:radial-gradient(circle,rgba(124,194,66,.14),transparent 70%);z-index:0;pointer-events:none}
+.dotgrid{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(rgba(0,180,166,.10) 1.4px,transparent 1.4px);background-size:26px 26px}
+
+header{position:relative;z-index:2;background:linear-gradient(120deg,var(--teal),var(--green));color:#fff;
+  display:flex;align-items:center;justify-content:space-between;padding:16px 28px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.05rem}
 .brand-mark{width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center}
 .who{display:flex;align-items:center;gap:14px;font-size:.85rem;font-weight:600}
 .who a{color:#fff;opacity:.85;text-decoration:none;border:1px solid rgba(255,255,255,.5);padding:7px 14px;border-radius:8px}
 .who a:hover{opacity:1;background:rgba(255,255,255,.12)}
 
-.shell{display:flex;min-height:calc(100vh - 64px)}
-.sidebar{width:220px;border-right:1px solid var(--border);padding:22px 14px;flex-shrink:0}
-.side-link{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;font-size:.85rem;font-weight:600;color:var(--text2);margin-bottom:4px}
+.qbar{position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:8px;padding:14px 28px;border-bottom:1px solid var(--border)}
+.qpill{font-size:.7rem;font-weight:700;color:var(--teal);background:#e8f8f7;padding:6px 14px;border-radius:50px}
+
+.shell{position:relative;z-index:2;display:flex;max-width:1320px;margin:0 auto}
+.sidebar{width:220px;padding:26px 14px;flex-shrink:0}
+.side-link{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;font-size:.85rem;font-weight:600;color:var(--text3);margin-bottom:4px}
 .side-link.active,.side-link:hover{background:var(--surface);color:var(--text)}
 
-.main{flex:1;padding:28px 32px}
-h1{font-size:1.4rem;font-weight:800;letter-spacing:-.02em;margin-bottom:22px}
+.main{flex:1;padding:26px 28px 70px;min-width:0}
+h1{font-size:28px;font-weight:800;letter-spacing:-.02em;margin-bottom:22px;animation:fadeUp .4s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:36px}
-@media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr)}}
-.stat-card{
-  border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;
-  box-shadow:0 1px 3px rgba(0,0,0,.04);background:var(--bg);
-}
-.stat-card .v{font-size:1.7rem;font-weight:800;letter-spacing:-.03em}
-.stat-card .k{font-size:.76rem;color:var(--text2);font-weight:600;margin-top:4px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:980px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat-card{background:#fff;border:1px solid var(--border);border-left:4px solid var(--teal);border-radius:12px;
+  padding:16px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 10px rgba(0,0,0,.04);animation:fadeUp .45s ease both}
+.stat-icon{width:42px;height:42px;border-radius:50%;background:#e8f8f7;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0}
+.stat-card .v{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.stat-card .k{font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
 
-.section-title{font-size:.95rem;font-weight:800;margin:8px 0 14px}
-.card{border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:36px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.charts{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:8px}
+@media(max-width:900px){.charts{grid-template-columns:1fr}}
+.chart-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,.04);animation:fadeUp .5s ease both}
+.chart-card h4{font-size:13px;font-weight:800;margin-bottom:16px;color:var(--text)}
+.bars{display:flex;align-items:flex-end;gap:12px;height:120px}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%}
+.bar{width:60%;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--teal),var(--green));min-height:4px;transition:height .6s ease}
+.bar-lbl{font-size:10px;color:var(--text3);font-weight:700}
 
-table{width:100%;border-collapse:collapse;font-size:.83rem}
-th{text-align:left;padding:12px 16px;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);border-bottom:1px solid var(--border);background:var(--surface)}
-td{padding:12px 16px;border-bottom:1px solid var(--border)}
+.donut-wrap{display:flex;align-items:center;gap:20px}
+.donut{width:110px;height:110px;border-radius:50%;flex-shrink:0}
+.donut-legend{font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:8px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+
+.section-title{font-size:18px;font-weight:700;margin:30px 0 14px}
+.card{border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:30px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:12px 16px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);border-bottom:1px solid var(--border);background:var(--surface)}
+td{padding:12px 16px;border-bottom:1px solid var(--border);color:var(--text2)}
 tr:nth-child(even) td{background:#f4fbfa}
 tr:last-child td{border-bottom:none}
 
@@ -62,13 +84,14 @@ tr:last-child td{border-bottom:none}
 .tag.sensitive{background:#fff6e9;color:var(--warn)}
 .tag.blocked{background:#fdecec;color:var(--danger)}
 
-.btn{padding:6px 12px;border-radius:8px;font-weight:700;font-size:.72rem;color:#fff;margin-right:6px}
+.btn{padding:6px 12px;border-radius:8px;font-weight:700;font-size:.72rem;color:#fff;margin-right:6px;transition:all .15s}
+.btn:hover{transform:scale(1.02);opacity:.9}
 .btn.teal{background:var(--teal)}
 .btn.green{background:var(--green)}
 .btn.gray{background:var(--text2)}
-.btn:hover{opacity:.85}
+.btn.red{background:var(--danger)}
 
-.empty{color:var(--text3);font-size:.85rem;padding:20px;text-align:center}
+.empty{color:var(--text3);font-size:13px;padding:24px;text-align:center}
 
 .feed{display:flex;flex-direction:column}
 .feed-item{display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid var(--border)}
@@ -78,19 +101,55 @@ tr:last-child td{border-bottom:none}
 .feed-sub{font-size:.74rem;color:var(--text2)}
 .feed-right{margin-left:auto;text-align:right}
 
+/* request tabs */
+.tabs{display:flex;gap:6px;margin-bottom:16px}
+.tab-btn{padding:9px 18px;border-radius:9px;font-weight:700;font-size:13px;color:var(--text3);background:var(--surface);transition:all .15s}
+.tab-btn.active{background:linear-gradient(120deg,var(--teal),var(--green));color:#fff}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+.req-card{border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:14px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.03);animation:fadeUp .35s ease both}
+.req-top{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.req-name{font-weight:800;font-size:14px}
+.req-email{font-size:12px;color:var(--text3)}
+.req-reason{font-size:13px;color:var(--text2);background:var(--surface);border-radius:9px;padding:10px 14px;margin-bottom:14px}
+.req-reason b{color:var(--text)}
+
+.score-grid{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.score-row{display:grid;grid-template-columns:130px 1fr 50px;align-items:center;gap:10px;font-size:12px;color:var(--text2)}
+.score-track{height:8px;border-radius:50px;background:var(--surface);overflow:hidden}
+.score-fill{height:100%;border-radius:50px;background:linear-gradient(90deg,var(--teal),var(--green))}
+.score-total{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:10px;margin-top:4px;font-weight:800;font-size:13px}
+.score-total .dec{font-size:11px;font-weight:700;padding:3px 10px;border-radius:50px}
+.dec.auto_approved,.dec.manually_approved{background:#eafaf0;color:var(--safe)}
+.dec.pending{background:#fef9c3;color:var(--pending)}
+.dec.auto_denied,.dec.manually_denied{background:#fdecec;color:var(--danger)}
+
+.req-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.deny-input{flex:1;min-width:180px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit}
+
 #toasts{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:999}
 .toast{background:var(--text);color:#fff;font-size:.82rem;font-weight:600;padding:11px 20px;border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 
-@media(max-width:760px){.shell{flex-direction:column}.sidebar{width:100%;display:flex;gap:6px;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border)}
-table{font-size:.74rem}th,td{padding:9px 10px}}
+@media(max-width:760px){.shell{flex-direction:column}.sidebar{width:100%;display:flex;gap:6px;overflow-x:auto}
+table{font-size:.74rem}th,td{padding:9px 10px} .score-row{grid-template-columns:100px 1fr 40px}}
 </style>
 </head>
 <body>
+<div class="dotgrid"></div>
 
 <header>
   <div class="brand"><div class="brand-mark">🛡</div> SafeFrame · IMB360 Admin</div>
   <div class="who">{{ user.name }} <a href="/logout">Sign out</a></div>
 </header>
+
+<div class="qbar">
+  <span class="qpill">Model: ResNet50</span>
+  <span class="qpill">Accuracy: 97.8%</span>
+  <span class="qpill">28K trained</span>
+  <span class="qpill">GPU: RTX 3050</span>
+  <span class="qpill">Live ✅</span>
+</div>
 
 <div class="shell">
   <div class="sidebar">
@@ -105,10 +164,35 @@ table{font-size:.74rem}th,td{padding:9px 10px}}
     <h1>Overview</h1>
 
     <div class="stats">
-      <div class="stat-card"><div class="v">{{ stats.total_users }}</div><div class="k">Total Users</div></div>
-      <div class="stat-card"><div class="v">{{ stats.total_uploads }}</div><div class="k">Total Uploads</div></div>
-      <div class="stat-card"><div class="v">{{ stats.pending }}</div><div class="k">Pending Requests</div></div>
-      <div class="stat-card"><div class="v">{{ stats.flagged }}</div><div class="k">Flagged Content</div></div>
+      <div class="stat-card"><div class="stat-icon">👥</div><div><div class="v">{{ stats.total_users }}</div><div class="k">Total Users</div></div></div>
+      <div class="stat-card"><div class="stat-icon">🛡️</div><div><div class="v">{{ stats.total_uploads }}</div><div class="k">Total Uploads</div></div></div>
+      <div class="stat-card" style="border-left-color:var(--pending)"><div class="stat-icon" style="background:#fef9c3">⏳</div><div><div class="v" style="color:var(--pending)">{{ stats.pending_manual }}</div><div class="k">Pending Manual Review</div></div></div>
+      <div class="stat-card" style="border-left-color:var(--safe)"><div class="stat-icon" style="background:#eafaf0">✅</div><div><div class="v" style="color:var(--safe)">{{ stats.auto_approved_today }}</div><div class="k">Auto Approved Today</div></div></div>
+    </div>
+
+    <div class="charts">
+      <div class="chart-card">
+        <h4>Uploads — Last 7 Days</h4>
+        <div class="bars">
+          {% for d in chart_days %}
+          <div class="bar-col">
+            <div class="bar" style="height:{{ d.pct }}%" title="{{ d.count }} uploads"></div>
+            <div class="bar-lbl">{{ d.label }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="chart-card">
+        <h4>Content Breakdown</h4>
+        <div class="donut-wrap">
+          <div class="donut" style="background:conic-gradient(var(--safe) 0 {{ donut.safe.pct }}%, var(--warn) {{ donut.safe.pct }}% {{ donut.safe.pct + donut.sens.pct }}%, var(--danger) {{ donut.safe.pct + donut.sens.pct }}% 100%)"></div>
+          <div class="donut-legend">
+            <div><span class="dot" style="background:var(--safe)"></span>Safe — {{ donut.safe.count }} ({{ donut.safe.pct }}%)</div>
+            <div><span class="dot" style="background:var(--warn)"></span>Sensitive — {{ donut.sens.count }} ({{ donut.sens.pct }}%)</div>
+            <div><span class="dot" style="background:var(--danger)"></span>Blocked — {{ donut.block.count }} ({{ donut.block.pct }}%)</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="section-title">Users</div>
@@ -122,8 +206,8 @@ table{font-size:.74rem}th,td{padding:9px 10px}}
             <td>{{ u.email }}</td>
             <td>{{ u.role }}</td>
             <td>{{ u.upload_count }}</td>
-            <td><span class="tag {{ 'active' if u.status=='active' else 'inactive' }}" id="status-{{ u.id }}">{{ u.status }}</span></td>
-            <td><span class="tag {{ 'priority' if u.priority else 'inactive' }}" id="prio-{{ u.id }}">{{ 'priority' if u.priority else 'standard' }}</span></td>
+            <td><span class="tag {{ 'active' if u.status=='active' else 'inactive' }}">{{ u.status }}</span></td>
+            <td><span class="tag {{ 'priority' if u.priority else 'inactive' }}">{{ 'priority' if u.priority else 'standard' }}</span></td>
             <td>
               <button class="btn teal" onclick="userAction('{{ u.id }}','toggle-status')">{{ 'Deactivate' if u.status=='active' else 'Activate' }}</button>
               <button class="btn green" onclick="userAction('{{ u.id }}','toggle-priority')">{{ 'Remove Priority' if u.priority else 'Make Priority' }}</button>
@@ -135,27 +219,68 @@ table{font-size:.74rem}th,td{padding:9px 10px}}
     </div>
 
     <div class="section-title">Access Requests</div>
-    <div class="card">
-      {% if requests %}
-      <table>
-        <thead><tr><th>Customer</th><th>Requested Brand</th><th>Date</th><th>Action</th></tr></thead>
-        <tbody>
-          {% for r in requests %}
-          <tr id="req-{{ r.id }}">
-            <td>{{ r.customer_name }}</td>
-            <td>{{ r.owner_name }}</td>
-            <td>{{ r.created_at[:10] }}</td>
-            <td>
-              <button class="btn teal" onclick="decide('{{ r.id }}','approved')">Approve</button>
-              <button class="btn gray" onclick="decide('{{ r.id }}','denied')">Deny</button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="review" onclick="showTab('review')">Needs Review ({{ needs_review|length }})</button>
+      <button class="tab-btn" data-tab="approved" onclick="showTab('approved')">Auto Approved ({{ auto_approved|length }})</button>
+      <button class="tab-btn" data-tab="denied" onclick="showTab('denied')">Auto Denied ({{ auto_denied|length }})</button>
+    </div>
+
+    {% macro score_bar(label, val) %}
+    <div class="score-row">
+      <span>{{ label }}</span>
+      <div class="score-track"><div class="score-fill" style="width:{{ (val/20*100)|round|int }}%"></div></div>
+      <span>{{ val }}/20</span>
+    </div>
+    {% endmacro %}
+
+    {% macro req_card(r, show_actions) %}
+    <div class="req-card">
+      <div class="req-top">
+        <div><span class="req-name">{{ r.customer_name }}</span> <span class="req-email">{{ r.customer_email }}</span> <span style="font-size:12px;color:var(--text3)">→ requesting access to {{ r.owner_name }}</span></div>
+        <span style="font-size:11px;color:var(--text3)">{{ r.created_at[:10] }}</span>
+      </div>
+      <div class="req-reason"><b>Reason:</b> {{ r.reason }}</div>
+      <div class="score-grid">
+        {{ score_bar("Account Age", r.score_breakdown.account_age) }}
+        {{ score_bar("Request History", r.score_breakdown.request_history) }}
+        {{ score_bar("Denial History", r.score_breakdown.denial_history) }}
+        {{ score_bar("Reason Quality", r.score_breakdown.reason_quality) }}
+        {{ score_bar("Email Domain", r.score_breakdown.email_domain) }}
+        <div class="score-total">
+          <span>Total: {{ r.trust_score }}/100</span>
+          <span class="dec {{ r.status }}">{{ status_labels[r.status] }}</span>
+        </div>
+      </div>
+      {% if show_actions %}
+      <div class="req-actions">
+        <button class="btn teal" onclick="decide('{{ r.id }}','manually_approved',this)">Approve</button>
+        <button class="btn red" onclick="decide('{{ r.id }}','manually_denied',this)">Deny</button>
+        <input class="deny-input" id="note-{{ r.id }}" placeholder="Optional note / deny reason…"/>
+      </div>
       {% else %}
-      <div class="empty">No pending access requests.</div>
+      <div class="req-actions">
+        {% if r.status == 'auto_approved' %}
+        <button class="btn red" onclick="decide('{{ r.id }}','manually_denied',this)">Override: Deny anyway</button>
+        {% else %}
+        <button class="btn teal" onclick="decide('{{ r.id }}','manually_approved',this)">Override: Approve anyway</button>
+        {% endif %}
+        <input class="deny-input" id="note-{{ r.id }}" placeholder="Optional override note…"/>
+      </div>
       {% endif %}
+    </div>
+    {% endmacro %}
+
+    <div class="tab-panel active" id="tab-review">
+      {% if needs_review %}{% for r in needs_review %}{{ req_card(r, true) }}{% endfor %}
+      {% else %}<div class="empty">Nothing needs manual review right now — Auto R&D is handling everything.</div>{% endif %}
+    </div>
+    <div class="tab-panel" id="tab-approved">
+      {% if auto_approved %}{% for r in auto_approved %}{{ req_card(r, false) }}{% endfor %}
+      {% else %}<div class="empty">No auto-approved requests yet.</div>{% endif %}
+    </div>
+    <div class="tab-panel" id="tab-denied">
+      {% if auto_denied %}{% for r in auto_denied %}{{ req_card(r, false) }}{% endfor %}
+      {% else %}<div class="empty">No auto-denied requests yet.</div>{% endif %}
     </div>
 
     <div class="section-title">Recent Uploads</div>
@@ -194,6 +319,12 @@ function toast(msg){
   t.textContent=msg;$('toasts').appendChild(t);setTimeout(()=>t.remove(),3500);
 }
 
+function showTab(name){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  $('tab-'+name).classList.add('active');
+}
+
 async function userAction(id,action){
   const fd=new FormData();fd.append('user_id',id);fd.append('action',action);
   const res=await fetch('/admin/user-action',{method:'POST',body:fd});
@@ -201,10 +332,11 @@ async function userAction(id,action){
   else toast('Action failed');
 }
 
-async function decide(id,decision){
-  const fd=new FormData();fd.append('request_id',id);fd.append('decision',decision);
+async function decide(id,decision,btn){
+  const note=($('note-'+id)||{}).value||'';
+  const fd=new FormData();fd.append('request_id',id);fd.append('decision',decision);fd.append('note',note);
   const res=await fetch('/approve-request',{method:'POST',body:fd});
-  if(res.ok){ toast(decision==='approved'?'Approved':'Denied'); document.getElementById('req-'+id).remove(); }
+  if(res.ok){ toast(decision==='manually_approved'?'Approved':'Denied'); setTimeout(()=>location.reload(),500); }
   else toast('Action failed');
 }
 </script>

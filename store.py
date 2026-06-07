@@ -22,15 +22,21 @@ REQUESTS_FILE = STORE_DIR / "requests.json"
 STORE_DIR.mkdir(exist_ok=True)
 
 # ── Seed accounts (created once, on first run) ────────────────────────────────
+# created_at dates are deliberately staggered into the past so the Auto R&D
+# "account age" signal has something realistic to score on day one.
 SEED_USERS = [
     {"id": "u-admin",  "name": "SafeFrame Admin", "email": "admin@safeframe.com",
-     "password": "admin123", "role": "admin",    "status": "active", "priority": False},
+     "password": "admin123", "role": "admin",    "status": "active", "priority": False,
+     "created_at": "2025-01-10T09:00:00+00:00"},
     {"id": "u-brand1", "name": "Brand One",       "email": "brand1@test.com",
-     "password": "brand123", "role": "brand",    "status": "active", "priority": False},
+     "password": "brand123", "role": "brand",    "status": "active", "priority": False,
+     "created_at": "2025-03-02T09:00:00+00:00"},
     {"id": "u-brand2", "name": "Brand Two",       "email": "brand2@test.com",
-     "password": "brand123", "role": "brand",    "status": "active", "priority": False},
+     "password": "brand123", "role": "brand",    "status": "active", "priority": False,
+     "created_at": "2025-06-18T09:00:00+00:00"},
     {"id": "u-cust1",  "name": "Customer One",    "email": "customer@test.com",
-     "password": "cust123",  "role": "customer", "status": "active", "priority": False},
+     "password": "cust123",  "role": "customer", "status": "active", "priority": False,
+     "created_at": "2026-04-20T09:00:00+00:00"},
 ]
 
 
@@ -148,18 +154,24 @@ def save_requests(reqs: list) -> None:
     _save(REQUESTS_FILE, reqs)
 
 
-def add_request(customer_id: str, owner_id: str, upload_id: str = None) -> dict:
-    # WHAT: create a pending access request from a customer to a brand user
-    # WHY:  uploads are private — customers must ask before viewing them
-    # IN:   customer_id, owner_id (whose content is being requested), upload_id (optional)
+def add_request(customer_id: str, owner_id: str, reason: str, rd_result: dict) -> dict:
+    # WHAT: create an access request, already scored & decided by auto_rd
+    # WHY:  every request is evaluated instantly — nothing sits "unscored"
+    # IN:   customer_id, owner_id, reason (free text), rd_result (dict from auto_rd.evaluate_request)
     # OUT:  the saved request dict
     reqs = load_requests()
     entry = {
         "id": uuid.uuid4().hex[:12],
         "customer_id": customer_id,
         "owner_id": owner_id,
-        "upload_id": upload_id,
-        "status": "pending",          # pending | approved | denied
+        "reason": reason,
+        # status: pending | auto_approved | auto_denied | manually_approved | manually_denied
+        "status": rd_result["decision"],
+        "trust_score": rd_result["total"],
+        "score_breakdown": rd_result["breakdown"],
+        "decision_message": rd_result["message"],
+        "admin_note": "",
+        "deny_reason": "",
         "created_at": now_iso(),
     }
     reqs.insert(0, entry)
@@ -167,12 +179,20 @@ def add_request(customer_id: str, owner_id: str, upload_id: str = None) -> dict:
     return entry
 
 
-def set_request_status(request_id: str, status: str) -> bool:
+def set_request_status(request_id: str, status: str, note: str = "") -> bool:
+    # WHAT: change a request's status (admin decision or override) and save
+    # WHY:  admin can approve/deny pending requests, or override any auto decision
+    # IN:   request_id, status (manually_approved | manually_denied), note (admin's reason/comment)
+    # OUT:  True if updated, else False
     reqs = load_requests()
     for r in reqs:
         if r["id"] == request_id:
             r["status"] = status
             r["decided_at"] = now_iso()
+            if status == "manually_denied":
+                r["deny_reason"] = note
+            else:
+                r["admin_note"] = note
             save_requests(reqs)
             return True
     return False
@@ -183,3 +203,29 @@ def requests_for_owner(owner_id: str, status: str = None) -> list:
     if status:
         reqs = [r for r in reqs if r["status"] == status]
     return reqs
+
+
+def requests_by_customer(customer_id: str) -> list:
+    return [r for r in load_requests() if r["customer_id"] == customer_id]
+
+
+def count_denials(customer_id: str) -> int:
+    # WHAT: count how many of a customer's PAST requests ended in denial
+    # WHY:  auto_rd's "denial history" signal needs this number
+    # IN:   customer_id
+    # OUT:  integer count of auto_denied + manually_denied requests
+    return len([r for r in requests_by_customer(customer_id)
+                if r["status"] in ("auto_denied", "manually_denied")])
+
+
+APPROVED_STATUSES = ("auto_approved", "manually_approved")
+DENIED_STATUSES   = ("auto_denied", "manually_denied")
+
+
+def approved_owner_ids(customer_id: str) -> set:
+    # WHAT: which brand accounts has this customer been approved to view
+    # WHY:  drives the "Approved Brands" gallery + button states on Browse Brands
+    # IN:   customer_id
+    # OUT:  set of owner_id strings
+    return {r["owner_id"] for r in requests_by_customer(customer_id)
+            if r["status"] in APPROVED_STATUSES}

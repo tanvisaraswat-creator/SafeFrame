@@ -9,88 +9,110 @@
 <style>
 :root{
   --teal:#00B4A6; --green:#7CC242;
-  --text:#1A1A1A; --text2:#6b6b76;
+  --text:#1A1A1A; --text2:#4A4A4A; --text3:#8A8A8A;
   --border:#e7e7ea; --bg:#ffffff;
   --r:14px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{
-  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  min-height:100vh;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(120deg,var(--teal),var(--green));
-  padding:24px;
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;color:var(--text)}
+.split{display:flex;min-height:100vh}
+
+/* left brand panel */
+.left{
+  flex:1;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center;
+  padding:60px;color:#fff;background:linear-gradient(135deg,var(--teal),var(--green));
 }
-.card{
-  width:100%;max-width:380px;background:var(--bg);border-radius:18px;
-  box-shadow:0 20px 60px rgba(0,0,0,.18);padding:40px 36px;
-}
-.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:6px}
-.brand-mark{
-  width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,var(--teal),var(--green));color:#fff;font-size:1.1rem;
-}
+.float{position:absolute;font-size:2.4rem;opacity:.16;animation:float 7s ease-in-out infinite}
+.float.f1{top:12%;left:14%;animation-delay:0s}
+.float.f2{top:62%;left:8%;animation-delay:1.4s;font-size:1.8rem}
+.float.f3{top:24%;right:14%;animation-delay:2.6s}
+.float.f4{bottom:14%;right:20%;animation-delay:3.8s;font-size:2rem}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-18px)}}
+.dots{position:absolute;inset:0;opacity:.18;background-image:radial-gradient(rgba(255,255,255,.5) 1.6px,transparent 1.6px);background-size:30px 30px}
+.left-inner{position:relative;z-index:2;max-width:420px}
+.left h1{font-size:2.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:10px}
+.left .tag{font-size:1.05rem;font-weight:600;opacity:.92;margin-bottom:30px}
+.feat{display:flex;align-items:center;gap:10px;font-size:.95rem;font-weight:600;margin-bottom:14px}
+.feat .ck{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:.8rem;flex-shrink:0}
+
+/* right form panel */
+.right{flex:1;display:flex;align-items:center;justify-content:center;padding:40px;background:#fff}
+.card{width:100%;max-width:380px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.brand-mark{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--teal),var(--green));color:#fff;font-size:1.1rem}
 .brand span{font-weight:800;font-size:1.25rem;letter-spacing:-.02em;color:var(--text)}
-.tagline{text-align:center;color:var(--text2);font-size:.8rem;font-weight:600;margin-bottom:30px}
+.tagline{color:var(--text3);font-size:.8rem;font-weight:600;margin-bottom:30px}
 
 label{display:block;font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:6px}
 .field{margin-bottom:18px}
-input{
-  width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;
-  font-size:.92rem;font-family:inherit;color:var(--text);transition:border-color .15s;
-}
+input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:.92rem;font-family:inherit;color:var(--text);transition:border-color .15s}
 input:focus{outline:none;border-color:var(--teal)}
 
-.btn{
-  width:100%;padding:13px;border-radius:10px;border:none;cursor:pointer;
-  font-weight:700;font-size:.92rem;color:#fff;margin-top:6px;
-  background:linear-gradient(120deg,var(--teal),var(--green));
-  transition:opacity .15s;
-}
-.btn:hover{opacity:.9}
+.btn{width:100%;padding:13px;border-radius:10px;border:none;cursor:pointer;font-weight:700;font-size:.92rem;color:#fff;margin-top:6px;
+  background:linear-gradient(120deg,var(--teal),var(--green));transition:all .15s}
+.btn:hover{opacity:.92;transform:scale(1.01)}
 
-.error{
-  background:#fdecec;color:#dc2626;font-size:.8rem;font-weight:600;
-  padding:10px 14px;border-radius:9px;margin-bottom:18px;text-align:center;
-}
-.foot{text-align:center;margin-top:22px;font-size:.8rem;color:var(--text2)}
+.error{background:#fdecec;color:#dc2626;font-size:.8rem;font-weight:600;padding:10px 14px;border-radius:9px;margin-bottom:18px;text-align:center}
+.foot{text-align:center;margin-top:22px;font-size:.8rem;color:var(--text3)}
 .foot a{color:var(--teal);font-weight:700;text-decoration:none}
-.hint{
-  margin-top:26px;padding:14px;border-radius:10px;background:#f7f7f8;
-  font-size:.74rem;color:var(--text2);line-height:1.6;
-}
+.hint{margin-top:26px;padding:14px;border-radius:10px;background:#f7f7f8;font-size:.74rem;color:var(--text2);line-height:1.6}
 .hint b{color:var(--text)}
+
+@media(max-width:860px){.left{display:none}.right{padding:24px}}
 </style>
 </head>
 <body>
-  <div class="card">
-    <div class="brand">
-      <div class="brand-mark">🛡</div>
-      <span>SafeFrame</span>
-    </div>
-    <div class="tagline">Powered by IMB360</div>
+<div class="split">
 
-    {% if error %}<div class="error">{{ error }}</div>{% endif %}
-
-    <form method="POST" action="/login">
-      <div class="field">
-        <label>Email</label>
-        <input type="email" name="email" placeholder="you@company.com" required/>
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input type="password" name="password" placeholder="••••••••" required/>
-      </div>
-      <button class="btn" type="submit">Sign In</button>
-    </form>
-
-    <div class="foot">New customer? <a href="mailto:access@safeframe.com">Request Access</a></div>
-
-    <div class="hint">
-      <b>Demo accounts</b><br/>
-      Admin — admin@safeframe.com / admin123<br/>
-      Brand — brand1@test.com / brand123<br/>
-      Customer — customer@test.com / cust123
+  <div class="left">
+    <div class="dots"></div>
+    <span class="float f1">🛡️</span>
+    <span class="float f2">●</span>
+    <span class="float f3">🛡️</span>
+    <span class="float f4">●</span>
+    <div class="left-inner">
+      <h1>SafeFrame</h1>
+      <div class="tag">AI-Powered Content Moderation</div>
+      <div class="feat"><span class="ck">✓</span> 97.8% accuracy</div>
+      <div class="feat"><span class="ck">✓</span> Real-time detection</div>
+      <div class="feat"><span class="ck">✓</span> Powered by ResNet50</div>
     </div>
   </div>
+
+  <div class="right">
+    <div class="card">
+      <div class="brand">
+        <div class="brand-mark">🛡</div>
+        <span>SafeFrame</span>
+      </div>
+      <div class="tagline">Powered by IMB360</div>
+
+      {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+      <form method="POST" action="/login">
+        <div class="field">
+          <label>Email</label>
+          <input type="email" name="email" placeholder="you@company.com" required/>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" name="password" placeholder="••••••••" required/>
+        </div>
+        <button class="btn" type="submit">Sign In</button>
+      </form>
+
+      <div class="foot">New customer? <a href="mailto:access@safeframe.com">Request Access</a></div>
+
+      <div class="hint">
+        <b>Demo accounts</b><br/>
+        Admin — admin@safeframe.com / admin123<br/>
+        Brand — brand1@test.com / brand123<br/>
+        Customer — customer@test.com / cust123
+      </div>
+    </div>
+  </div>
+
+</div>
 </body>
 </html>

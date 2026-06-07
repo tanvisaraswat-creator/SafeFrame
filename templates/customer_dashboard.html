@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>My Dashboard · SafeFrame</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --teal:#00B4A6; --green:#7CC242;
+  --text:#1A1A1A; --text2:#4A4A4A; --text3:#8A8A8A;
+  --border:#e7e7ea; --surface:#f7f7f8; --bg:#ffffff;
+  --safe:#16a34a; --warn:#d97706; --danger:#dc2626; --pending:#ca8a04;
+  --r:14px; --r2:10px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);position:relative;overflow-x:hidden}
+button{cursor:pointer;border:none;font-family:inherit}
+
+/* decorative background */
+body::before{
+  content:'';position:fixed;top:-160px;right:-160px;width:480px;height:480px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,180,166,.16),transparent 70%);z-index:0;pointer-events:none;
+}
+body::after{
+  content:'';position:fixed;bottom:-180px;left:-180px;width:420px;height:420px;border-radius:50%;
+  background:radial-gradient(circle,rgba(124,194,66,.14),transparent 70%);z-index:0;pointer-events:none;
+}
+.dotgrid{
+  position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(rgba(0,180,166,.10) 1.4px,transparent 1.4px);
+  background-size:26px 26px;
+}
+
+header{
+  position:relative;z-index:2;
+  background:linear-gradient(120deg,var(--teal),var(--green));color:#fff;
+  display:flex;align-items:center;justify-content:space-between;padding:16px 28px;
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.05rem}
+.brand-mark{width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center}
+.who{display:flex;align-items:center;gap:14px;font-size:.85rem;font-weight:600}
+.who a{color:#fff;opacity:.85;text-decoration:none;border:1px solid rgba(255,255,255,.5);padding:7px 14px;border-radius:8px}
+.who a:hover{opacity:1;background:rgba(255,255,255,.12)}
+
+.qbar{position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:8px;padding:14px 28px;border-bottom:1px solid var(--border)}
+.qpill{font-size:.7rem;font-weight:700;color:var(--teal);background:#e8f8f7;padding:6px 14px;border-radius:50px}
+
+.shell{position:relative;z-index:2;max-width:1180px;margin:0 auto;padding:30px 28px 70px}
+h1{font-size:28px;font-weight:800;letter-spacing:-.02em;margin-bottom:4px;animation:fadeUp .4s ease both}
+.sub{color:var(--text2);font-size:14px;margin-bottom:28px;animation:fadeUp .4s ease both .05s}
+.section-title{font-size:18px;font-weight:700;margin:36px 0 14px;animation:fadeUp .4s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.card{
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r);
+  box-shadow:0 2px 10px rgba(0,0,0,.04);animation:fadeUp .45s ease both;
+}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:12px 16px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);border-bottom:1px solid var(--border);background:var(--surface)}
+td{padding:12px 16px;border-bottom:1px solid var(--border);color:var(--text2)}
+tr:nth-child(even) td{background:#f4fbfa}
+tr:last-child td{border-bottom:none}
+
+.badge{padding:4px 12px;border-radius:50px;font-weight:700;font-size:11px;display:inline-flex;align-items:center;gap:6px}
+.badge.pending{background:#fef9c3;color:var(--pending)}
+.badge.pending::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--pending);animation:pulse 1.4s infinite}
+.badge.green{background:#eafaf0;color:var(--safe)}
+.badge.red{background:#fdecec;color:var(--danger)}
+.tag-verified{font-size:10px;font-weight:700;color:var(--teal);background:#e8f8f7;padding:2px 8px;border-radius:50px;margin-left:6px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.empty{
+  text-align:center;padding:50px 20px;color:var(--text3);
+}
+.empty .shield{font-size:46px;margin-bottom:14px}
+.empty .t1{font-weight:700;color:var(--text);font-size:15px;margin-bottom:4px}
+.empty .t2{font-size:13px;margin-bottom:18px}
+
+.brand-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.b-card{
+  border:1px solid var(--border);border-radius:var(--r);padding:20px;background:var(--bg);
+  box-shadow:0 2px 10px rgba(0,0,0,.04);animation:fadeUp .45s ease both;
+}
+.b-name{font-weight:700;font-size:15px;margin-bottom:4px}
+.b-meta{font-size:12px;color:var(--text3);margin-bottom:16px}
+.b-btn{
+  width:100%;padding:10px;border-radius:9px;font-weight:700;font-size:13px;color:#fff;
+  text-align:center;transition:all .15s;
+}
+.b-btn:hover{transform:scale(1.02)}
+.b-btn.req{background:linear-gradient(120deg,var(--teal),var(--green))}
+.b-btn.pending{background:#e5e7eb;color:var(--text3);cursor:default}
+.b-btn.view{background:var(--safe)}
+.b-btn.denied{background:#fdecec;color:var(--danger);cursor:not-allowed}
+
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.g-card{border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;background:var(--bg);box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.g-thumb{position:relative;aspect-ratio:4/3;background:#eee;overflow:hidden}
+.g-thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:filter .3s}
+.g-thumb img.blurred{filter:blur(20px) saturate(.6)}
+.g-thumb img.masked{filter:brightness(0)}
+.g-ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:10px}
+.g-ov .lbl{font-weight:700;font-size:12px;color:#fff;background:rgba(0,0,0,.5);padding:4px 10px;border-radius:50px}
+.g-ov.sensitive .lbl{background:var(--warn)}
+.g-ov.restricted .lbl{background:var(--danger)}
+.g-ov .reveal{font-size:11px;font-weight:700;color:#fff;border:1px solid rgba(255,255,255,.7);padding:5px 12px;border-radius:8px;background:rgba(255,255,255,.12)}
+.g-body{padding:11px 14px;font-size:12px;color:var(--text3)}
+
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:500}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:16px;padding:28px;width:100%;max-width:420px;box-shadow:0 30px 80px rgba(0,0,0,.25)}
+.modal h3{font-size:17px;font-weight:800;margin-bottom:6px}
+.modal .mb{font-size:12px;color:var(--text3);margin-bottom:18px}
+.modal label{font-size:12px;font-weight:700;display:block;margin-bottom:6px}
+.modal input,.modal textarea{
+  width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:9px;
+  font-family:inherit;font-size:13px;margin-bottom:6px;color:var(--text);
+}
+.modal textarea{resize:vertical;min-height:96px}
+.wcount{font-size:11px;color:var(--text3);margin-bottom:16px}
+.modal .actions{display:flex;gap:10px;margin-top:6px}
+.modal .actions button{flex:1;padding:11px;border-radius:9px;font-weight:700;font-size:13px}
+.modal .cancel{background:var(--surface);color:var(--text2)}
+.modal .submit{background:linear-gradient(120deg,var(--teal),var(--green));color:#fff}
+.rd-result{margin-top:16px;padding:14px;border-radius:10px;font-size:13px;font-weight:600;text-align:center}
+.rd-result.auto_approved,.rd-result.manually_approved{background:#eafaf0;color:var(--safe)}
+.rd-result.pending{background:#fef9c3;color:var(--pending)}
+.rd-result.auto_denied,.rd-result.manually_denied{background:#fdecec;color:var(--danger)}
+
+#toasts{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:999}
+.toast{background:var(--text);color:#fff;font-size:13px;font-weight:600;padding:11px 20px;border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.toast.err{background:var(--danger)}
+
+@media(max-width:640px){.shell{padding:22px 16px 60px}h1{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="dotgrid"></div>
+
+<header>
+  <div class="brand"><div class="brand-mark">🛡</div> SafeFrame · IMB360</div>
+  <div class="who">{{ user.name }} (customer) <a href="/logout">Sign out</a></div>
+</header>
+
+<div class="qbar">
+  <span class="qpill">Model: ResNet50</span>
+  <span class="qpill">Accuracy: 97.8%</span>
+  <span class="qpill">28K trained</span>
+  <span class="qpill">GPU: RTX 3050</span>
+  <span class="qpill">Live ✅</span>
+</div>
+
+<div class="shell">
+  <h1>Welcome, {{ user.name.split(' ')[0] }}</h1>
+  <div class="sub">Browse brands, request access to their content, and track every decision — all evaluated instantly by our Auto R&D engine.</div>
+
+  <div class="section-title">My Access Requests</div>
+  {% if requests %}
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>Brand</th><th>Requested On</th><th>Reason Given</th><th>Trust Score</th><th>Status</th><th>Admin Note</th></tr></thead>
+      <tbody>
+        {% for r in requests %}
+        <tr>
+          <td><b style="color:var(--text)">{{ r.brand_name }}</b></td>
+          <td>{{ r.created_at[:10] }}</td>
+          <td style="max-width:260px">{{ r.reason }}</td>
+          <td><b style="color:var(--text)">{{ r.trust_score }}</b>/100</td>
+          <td>
+            {% if r.status == 'pending' %}
+              <span class="badge pending">Pending</span>
+            {% elif r.status == 'auto_approved' %}
+              <span class="badge green">Auto-Approved</span>
+            {% elif r.status == 'manually_approved' %}
+              <span class="badge green">Manually Approved<span class="tag-verified">Admin Verified</span></span>
+            {% elif r.status == 'auto_denied' %}
+              <span class="badge red">Auto-Denied</span>
+            {% elif r.status == 'manually_denied' %}
+              <span class="badge red">Manually Denied</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.status == 'manually_denied' and r.deny_reason %}{{ r.deny_reason }}
+            {% elif r.admin_note %}{{ r.admin_note }}
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card empty">
+    <div class="shield">🛡️</div>
+    <div class="t1">No requests yet</div>
+    <div class="t2">Browse the brands below and request access to their content.</div>
+  </div>
+  {% endif %}
+
+  <div class="section-title">Browse Brands</div>
+  <div class="brand-grid">
+    {% for b in brands %}
+    <div class="b-card">
+      <div class="b-name">{{ b.name }}</div>
+      <div class="b-meta">{{ b.upload_count }} image{{ '' if b.upload_count == 1 else 's' }} moderated</div>
+      {% if b.request_status is none %}
+        <button class="b-btn req" onclick="openModal('{{ b.id }}','{{ b.name }}')">Request Access</button>
+      {% elif b.request_status == 'pending' %}
+        <button class="b-btn pending" disabled>Pending Review</button>
+      {% elif b.request_status in ['auto_approved','manually_approved'] %}
+        <a class="b-btn view" style="display:block;text-decoration:none" href="#approved-{{ b.id }}">View Content</a>
+      {% else %}
+        <button class="b-btn denied" disabled>Access Denied</button>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if approved_uploads %}
+  <div class="section-title" id="approved">Approved Brands — Content</div>
+  <div class="gallery">
+    {% for u in approved_uploads %}
+    <div class="g-card" id="approved-{{ u.owner_id }}">
+      <div class="g-thumb">
+        {% set rc = u.raw_class %}
+        {% if rc in ['neutral','drawings'] %}
+          <img src="{{ u.image_url }}" alt=""/>
+        {% elif rc == 'sexy' %}
+          <img class="blurred reveal-img" src="{{ u.image_url }}" alt=""/>
+          <div class="g-ov sensitive"><span class="lbl">Sensitive</span><button class="reveal" onclick="reveal(this)">Click to reveal</button></div>
+        {% else %}
+          <img class="masked" src="{{ u.image_url }}" alt=""/>
+          <div class="g-ov restricted"><span class="lbl">Restricted</span><span style="color:#fff;font-size:11px">Restricted Content — Admin Only</span></div>
+        {% endif %}
+      </div>
+      <div class="g-body">{{ u.owner_name }} · {{ u.created_at[:10] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- request access modal -->
+<div class="modal-bg" id="reqmodal">
+  <div class="modal">
+    <h3>Request Access</h3>
+    <div class="mb">Tell <span id="m-brand-name">this brand</span> why you need to view their content. Be specific — vague requests score lower.</div>
+    <input type="hidden" id="m-owner-id"/>
+    <label>Brand</label>
+    <input id="m-brand-display" disabled/>
+    <label style="margin-top:6px">Reason (minimum 15 words)</label>
+    <textarea id="m-reason" placeholder="Explain why you need access — e.g. I am a marketing agency representing several retailers and want to review this brand's recent campaign creatives before proposing a partnership..."></textarea>
+    <div class="wcount" id="m-wcount">0 words</div>
+    <div class="actions">
+      <button class="cancel" onclick="closeModal()">Cancel</button>
+      <button class="submit" id="m-submit" onclick="submitRequest()">Submit Request</button>
+    </div>
+    <div id="m-result"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+function toast(msg,err=false){
+  const t=document.createElement('div');t.className='toast'+(err?' err':'');
+  t.textContent=msg;$('toasts').appendChild(t);setTimeout(()=>t.remove(),4500);
+}
+
+function openModal(ownerId,name){
+  $('m-owner-id').value=ownerId;
+  $('m-brand-name').textContent=name;
+  $('m-brand-display').value=name;
+  $('m-reason').value='';$('m-wcount').textContent='0 words';
+  $('m-result').innerHTML='';
+  $('m-submit').style.display='block';
+  $('reqmodal').classList.add('open');
+}
+function closeModal(){ $('reqmodal').classList.remove('open') }
+$('m-reason').addEventListener('input',e=>{
+  const n=e.target.value.trim().split(/\s+/).filter(Boolean).length;
+  $('m-wcount').textContent=n+' words'+(n<15?' (need at least 15)':'');
+});
+
+async function submitRequest(){
+  const ownerId=$('m-owner-id').value;
+  const reason=$('m-reason').value.trim();
+  const n=reason.split(/\s+/).filter(Boolean).length;
+  if(n<15){ toast('Please write at least 15 words explaining your reason.',true); return }
+
+  const fd=new FormData();fd.append('owner_id',ownerId);fd.append('reason',reason);
+  try{
+    const res=await fetch('/request-access',{method:'POST',body:fd});
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error||'Request failed');
+    $('m-result').innerHTML=`<div class="rd-result ${data.decision}">${data.message}</div>`;
+    $('m-submit').style.display='none';
+    setTimeout(()=>location.reload(),1800);
+  }catch(e){ toast('Error: '+e.message,true) }
+}
+
+function reveal(btn){
+  const card=btn.closest('.g-thumb');
+  card.querySelector('img').classList.remove('blurred');
+  card.querySelector('.g-ov').remove();
+}
+</script>
+</body>
+</html>
