@@ -33,6 +33,9 @@ static/uploads/*
 logs/moderation_log.json
 !logs/.gitkeep
 
+# ── Multi-user JSON "database" (runtime data, not source) ─────────────────────
+data_store/*.json
+
 # ── API Keys and Secrets ───────────────────────────────────────────────────────
 .env
 .env.local

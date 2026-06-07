@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Sign In · SafeFrame</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --teal:#00B4A6; --green:#7CC242;
+  --text:#1A1A1A; --text2:#6b6b76;
+  --border:#e7e7ea; --bg:#ffffff;
+  --r:14px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(120deg,var(--teal),var(--green));
+  padding:24px;
+}
+.card{
+  width:100%;max-width:380px;background:var(--bg);border-radius:18px;
+  box-shadow:0 20px 60px rgba(0,0,0,.18);padding:40px 36px;
+}
+.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:6px}
+.brand-mark{
+  width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--teal),var(--green));color:#fff;font-size:1.1rem;
+}
+.brand span{font-weight:800;font-size:1.25rem;letter-spacing:-.02em;color:var(--text)}
+.tagline{text-align:center;color:var(--text2);font-size:.8rem;font-weight:600;margin-bottom:30px}
+
+label{display:block;font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:6px}
+.field{margin-bottom:18px}
+input{
+  width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;
+  font-size:.92rem;font-family:inherit;color:var(--text);transition:border-color .15s;
+}
+input:focus{outline:none;border-color:var(--teal)}
+
+.btn{
+  width:100%;padding:13px;border-radius:10px;border:none;cursor:pointer;
+  font-weight:700;font-size:.92rem;color:#fff;margin-top:6px;
+  background:linear-gradient(120deg,var(--teal),var(--green));
+  transition:opacity .15s;
+}
+.btn:hover{opacity:.9}
+
+.error{
+  background:#fdecec;color:#dc2626;font-size:.8rem;font-weight:600;
+  padding:10px 14px;border-radius:9px;margin-bottom:18px;text-align:center;
+}
+.foot{text-align:center;margin-top:22px;font-size:.8rem;color:var(--text2)}
+.foot a{color:var(--teal);font-weight:700;text-decoration:none}
+.hint{
+  margin-top:26px;padding:14px;border-radius:10px;background:#f7f7f8;
+  font-size:.74rem;color:var(--text2);line-height:1.6;
+}
+.hint b{color:var(--text)}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="brand-mark">🛡</div>
+      <span>SafeFrame</span>
+    </div>
+    <div class="tagline">Powered by IMB360</div>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    <form method="POST" action="/login">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" name="email" placeholder="you@company.com" required/>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="password" placeholder="••••••••" required/>
+      </div>
+      <button class="btn" type="submit">Sign In</button>
+    </form>
+
+    <div class="foot">New customer? <a href="mailto:access@safeframe.com">Request Access</a></div>
+
+    <div class="hint">
+      <b>Demo accounts</b><br/>
+      Admin — admin@safeframe.com / admin123<br/>
+      Brand — brand1@test.com / brand123<br/>
+      Customer — customer@test.com / cust123
+    </div>
+  </div>
+</body>
+</html>

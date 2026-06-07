@@ -20,15 +20,17 @@ import json
 import uuid
 import logging
 import cv2
+import functools
 from pathlib import Path
 from datetime import datetime, timezone
 from werkzeug.utils import secure_filename
 from flask import (
     Flask, request, jsonify, send_from_directory,
-    render_template, abort,
+    render_template, abort, session, redirect, url_for,
 )
 from moderation_engine import ModerationEngine, report_to_dict, CONTEXT_PROFILES
 from moderate import apply_blur, apply_mask
+import store
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
 BASE_DIR        = Path(__file__).parent
@@ -131,15 +133,264 @@ def compute_stats(entries: list[dict]) -> dict:
     }
 
 
+# ─── Auth helpers ─────────────────────────────────────────────────────────────
+def current_user():
+    # WHAT: fetch the logged-in user's record from the session
+    # WHY:  every protected route needs to know who is asking
+    # IN:   nothing (reads Flask session)
+    # OUT:  user dict or None
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    return store.find_user_by_id(uid)
+
+
+def login_required(view):
+    # WHAT: decorator that redirects to /login if nobody is signed in
+    # WHY:  /dashboard, /admin, /upload etc. must not be reachable anonymously
+    # IN:   view function to wrap
+    # OUT:  wrapped view function
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        if not current_user():
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def admin_required(view):
+    # WHAT: decorator that only lets role == "admin" through
+    # WHY:  the admin dashboard and approval actions are admin-only
+    # IN:   view function to wrap
+    # OUT:  wrapped view function
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if not user:
+            return redirect(url_for("login"))
+        if user["role"] != "admin":
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapped
+
+
 # ─── Page Routes ──────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     return render_template("index.html")
 
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "GET":
+        if current_user():
+            user = current_user()
+            return redirect(url_for("admin") if user["role"] == "admin" else url_for("dashboard"))
+        return render_template("login.html")
+
+    email    = request.form.get("email", "")
+    password = request.form.get("password", "")
+    user = store.find_user_by_email(email)
+
+    if not user or user["password"] != password:
+        return render_template("login.html", error="Invalid email or password."), 401
+    if user.get("status") == "inactive":
+        return render_template("login.html", error="This account has been deactivated."), 403
+
+    session["user_id"] = user["id"]
+    logger.info("[LOGIN] %s (%s) signed in", user["email"], user["role"])
+    return redirect(url_for("admin") if user["role"] == "admin" else url_for("dashboard"))
+
+
+@app.route("/logout")
+def logout():
+    session.pop("user_id", None)
+    return redirect(url_for("login"))
+
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    user = current_user()
+    if user["role"] == "admin":
+        return redirect(url_for("admin"))
+
+    my_uploads = store.uploads_for_user(user["id"])
+    incoming   = store.requests_for_owner(user["id"], status="pending")
+    customers  = {u["id"]: u for u in store.load_users()}
+
+    # attach requester names + per-upload pending request lists
+    incoming_view = []
+    for r in incoming:
+        cust = customers.get(r["customer_id"], {})
+        incoming_view.append({**r, "customer_name": cust.get("name", "Unknown"),
+                              "customer_email": cust.get("email", "")})
+
+    return render_template("user_dashboard.html", user=user,
+                           uploads=my_uploads, requests=incoming_view)
+
+
 @app.route("/admin")
+@admin_required
 def admin():
-    return render_template("admin.html")
+    user      = current_user()
+    users     = [u for u in store.load_users() if u["role"] != "admin"]
+    requests_ = store.load_requests()
+    uploads   = store.load_uploads()
+    by_id     = {u["id"]: u for u in store.load_users()}
+
+    # enrich users with their upload counts
+    upload_counts = {}
+    for up in uploads:
+        upload_counts[up["owner_id"]] = upload_counts.get(up["owner_id"], 0) + 1
+    for u in users:
+        u["upload_count"] = upload_counts.get(u["id"], 0)
+
+    pending_requests = [r for r in requests_ if r["status"] == "pending"]
+    requests_view = []
+    for r in pending_requests:
+        cust  = by_id.get(r["customer_id"], {})
+        owner = by_id.get(r["owner_id"], {})
+        requests_view.append({**r, "customer_name": cust.get("name", "Unknown"),
+                              "owner_name": owner.get("name", "Unknown")})
+
+    flagged = [u for u in uploads if u.get("blocked") or u.get("blurred")]
+
+    stats = {
+        "total_users":   len(users),
+        "total_uploads": len(uploads),
+        "pending":       len(pending_requests),
+        "flagged":       len(flagged),
+    }
+
+    recent = uploads[:10]
+    for r in recent:
+        owner = by_id.get(r["owner_id"], {})
+        r["owner_name"] = owner.get("name", "Unknown")
+
+    return render_template("admin.html", user=user, users=users,
+                           requests=requests_view, stats=stats, recent=recent)
+
+
+# ─── Brand-user upload (private, tracked per-account) ─────────────────────────
+@app.route("/upload", methods=["POST"])
+@login_required
+def user_upload():
+    user = current_user()
+    if user["role"] != "brand":
+        abort(403)
+
+    if "image" not in request.files or request.files["image"].filename == "":
+        return jsonify({"error": "No image file provided."}), 400
+
+    file = request.files["image"]
+    if not allowed_file(file.filename):
+        return jsonify({"error": "Unsupported file type."}), 415
+
+    ext = file.filename.rsplit(".", 1)[1].lower()
+    unique_name = f"{uuid.uuid4().hex}.{ext}"
+    save_path = UPLOAD_DIR / unique_name
+
+    try:
+        file.save(str(save_path))
+        eng = get_engine()
+        report = eng.moderate(str(save_path), file.filename, context="standard")
+        result = report_to_dict(report)
+
+        if report.blurred:
+            image_bgr = cv2.imread(str(save_path))
+            if report.raw_class in ("porn", "hentai"):
+                cv2.imwrite(str(save_path), apply_mask(image_bgr))
+                result["filter_applied"] = "masked"
+            else:
+                cv2.imwrite(str(save_path), apply_blur(image_bgr))
+                result["filter_applied"] = "blurred"
+        else:
+            result["filter_applied"] = "none"
+    except Exception as exc:
+        logger.error("Brand upload failed: %s", exc)
+        save_path.unlink(missing_ok=True)
+        return jsonify({"error": "Upload/moderation failed.", "detail": str(exc)}), 500
+
+    record = {
+        "filename": file.filename,
+        "stored_filename": unique_name,
+        "image_url": f"/api/image/{unique_name}",
+        "primary_category": result["primary_category"],
+        "raw_class": result["raw_class"],
+        "action": result["action"],
+        "confidence_pct": result["confidence_pct"],
+        "blurred": result["blurred"],
+        "blocked": result["blocked"],
+        "filter_applied": result["filter_applied"],
+        "processing_time_ms": result["processing_time_ms"],
+    }
+    saved = store.add_upload(user["id"], record)
+    logger.info("[UPLOAD] %s by %s -> %s (%s)", file.filename, user["email"],
+                saved["raw_class"], saved["action"])
+    return jsonify({"success": True, "upload": saved}), 200
+
+
+# ─── Access requests (customer <-> brand user, or admin on their behalf) ──────
+@app.route("/request-access", methods=["POST"])
+@login_required
+def request_access():
+    user = current_user()
+    if user["role"] != "customer":
+        abort(403)
+
+    owner_id  = request.form.get("owner_id", "")
+    upload_id = request.form.get("upload_id") or None
+    if not store.find_user_by_id(owner_id):
+        return jsonify({"error": "Brand not found."}), 404
+
+    entry = store.add_request(user["id"], owner_id, upload_id)
+    logger.info("[ACCESS] %s requested access to %s's content", user["email"], owner_id)
+    return jsonify({"success": True, "request": entry}), 200
+
+
+@app.route("/approve-request", methods=["POST"])
+@login_required
+def approve_request():
+    user       = current_user()
+    request_id = request.form.get("request_id", "")
+    decision   = request.form.get("decision", "approved")   # approved | denied
+
+    reqs = store.load_requests()
+    target = next((r for r in reqs if r["id"] == request_id), None)
+    if not target:
+        return jsonify({"error": "Request not found."}), 404
+
+    # only the content owner or an admin may decide
+    if user["role"] != "admin" and user["id"] != target["owner_id"]:
+        abort(403)
+
+    store.set_request_status(request_id, decision)
+    logger.info("[ACCESS] request %s -> %s (decided by %s)", request_id, decision, user["email"])
+    return jsonify({"success": True, "status": decision}), 200
+
+
+# ─── Admin: manage brand/customer accounts ────────────────────────────────────
+@app.route("/admin/user-action", methods=["POST"])
+@admin_required
+def admin_user_action():
+    target_id = request.form.get("user_id", "")
+    action    = request.form.get("action", "")
+
+    target = store.find_user_by_id(target_id)
+    if not target:
+        return jsonify({"error": "User not found."}), 404
+
+    if action == "toggle-status":
+        new_status = "inactive" if target.get("status") == "active" else "active"
+        store.update_user(target_id, status=new_status)
+    elif action == "toggle-priority":
+        store.update_user(target_id, priority=not target.get("priority", False))
+    else:
+        return jsonify({"error": "Unknown action."}), 400
+
+    logger.info("[ADMIN] %s -> %s", target["email"], action)
+    return jsonify({"success": True}), 200
 
 
 # ─── API: Upload & Moderate ───────────────────────────────────────────────────
