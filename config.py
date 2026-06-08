@@ -35,6 +35,58 @@ SAFE_CLASSES   = ["neutral", "drawings"]
 # UNSAFE classes: model will BLUR / FLAG these
 UNSAFE_CLASSES = ["sexy", "porn", "hentai"]
 
+# ── Platform Context Thresholds ────────────────────────────────────────────────
+# WHAT: per-platform sensitivity profiles for brand accounts — different
+#       businesses have very different baselines for what counts as "normal".
+#       A fashion catalogue shows skin as a matter of course; a children's
+#       platform needs to flag the same image instantly.
+# WHY:  lets each brand pick a "Platform Type" on their profile and have every
+#       upload they make moderated against thresholds that fit their context,
+#       instead of one-size-fits-all global thresholds.
+# Keys map onto our model's raw classes:
+#   "mature"   -> raw_class == "sexy"   (suggestive / lightly revealing)
+#   "explicit" -> raw_class == "porn"   (explicit real-photo content)
+#   "hentai"   -> raw_class == "hentai" (explicit illustrated content)
+# A LOWER threshold = stricter (flags at lower model confidence).
+PLATFORM_THRESHOLDS = {
+    "fashion": {
+        "mature":   0.75,   # fashion brands show skin normally
+        "explicit": 0.50,
+        "hentai":   0.75,
+    },
+    "standard": {
+        "mature":   0.35,   # default
+        "explicit": 0.25,
+        "hentai":   0.65,
+    },
+    "children": {
+        "mature":   0.15,   # very strict
+        "explicit": 0.10,
+        "hentai":   0.50,
+    },
+    "medical": {
+        "mature":   0.90,   # medical images need to show body
+        "explicit": 0.60,
+        "hentai":   0.75,
+    },
+    "enterprise": {
+        "mature":   0.55,   # professional environment, conservative but not strict
+        "explicit": 0.35,
+        "hentai":   0.65,
+    },
+}
+
+DEFAULT_PLATFORM_TYPE = "standard"
+
+# Display labels + emoji for the brand "Platform Type" selector / badge
+PLATFORM_TYPE_LABELS = {
+    "fashion":    {"label": "Fashion & Apparel",    "emoji": "👗", "badge": "Fashion Mode"},
+    "standard":   {"label": "Standard Business",    "emoji": "🏪", "badge": "Standard Mode"},
+    "children":   {"label": "Children's Platform",  "emoji": "👶", "badge": "Children's Mode"},
+    "medical":    {"label": "Medical & Health",     "emoji": "🏥", "badge": "Medical Mode"},
+    "enterprise": {"label": "Enterprise",           "emoji": "🏢", "badge": "Enterprise Mode"},
+}
+
 # ── Decision Thresholds ────────────────────────────────────────────────────────
 CONFIDENCE_THRESHOLD = 0.50   # below this → FLAG FOR REVIEW, don't auto-blur
 BLUR_THRESHOLD       = 0.35   # >= this + unsafe class → apply Gaussian blur (lowered — catches lower-confidence hits, e.g. explicit content diluted inside screenshots)

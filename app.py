@@ -30,6 +30,7 @@ from flask import (
 )
 from moderation_engine import ModerationEngine, report_to_dict, CONTEXT_PROFILES
 from moderate import apply_blur, apply_mask
+from config import PLATFORM_THRESHOLDS, PLATFORM_TYPE_LABELS, DEFAULT_PLATFORM_TYPE
 import store
 import auto_rd
 
@@ -239,9 +240,12 @@ def dashboard():
         approved_view.append({**r, "customer_name": cust.get("name", "Unknown"),
                               "customer_email": cust.get("email", "")})
 
+    platform_type = user.get("platform_type", DEFAULT_PLATFORM_TYPE)
     return render_template("user_dashboard.html", user=user,
                            uploads=my_uploads, approved_customers=approved_view,
-                           status_labels=STATUS_LABELS)
+                           status_labels=STATUS_LABELS,
+                           platform_type=platform_type,
+                           platform_types=PLATFORM_TYPE_LABELS)
 
 
 def _customer_dashboard(user):
@@ -391,7 +395,9 @@ def user_upload():
     try:
         file.save(str(save_path))
         eng = get_engine()
-        report = eng.moderate(str(save_path), file.filename, context="standard")
+        platform_type = user.get("platform_type", DEFAULT_PLATFORM_TYPE)
+        report = eng.moderate(str(save_path), file.filename, context="standard",
+                              platform_type=platform_type)
         result = report_to_dict(report)
 
         if report.blurred:
@@ -464,6 +470,29 @@ def delete_upload():
     logger.info("[DELETE] upload %s (%s) removed by %s", upload_id,
                 removed.get("filename"), user["email"])
     return jsonify({"success": True, "deleted_id": upload_id}), 200
+
+
+@app.route("/set-platform-type", methods=["POST"])
+@login_required
+def set_platform_type():
+    # WHAT: a brand picks their "Platform Type" (Fashion, Standard, Children's,
+    #       Medical, Enterprise) — saved to their user profile in users.json
+    # WHY:  every future upload from this brand is then moderated against
+    #       that platform's PLATFORM_THRESHOLDS instead of generic defaults —
+    #       e.g. a fashion catalogue tolerates more skin than a children's app
+    # IN:   platform_type (form field — must be a known PLATFORM_THRESHOLDS key)
+    # OUT:  JSON success / error
+    user = current_user()
+    if user["role"] != "brand":
+        abort(403)
+
+    platform_type = request.form.get("platform_type", "").strip().lower()
+    if platform_type not in PLATFORM_THRESHOLDS:
+        return jsonify({"error": "Unknown platform type."}), 400
+
+    store.update_user(user["id"], platform_type=platform_type)
+    logger.info("[PLATFORM] %s set platform_type -> %s", user["email"], platform_type)
+    return jsonify({"success": True, "platform_type": platform_type}), 200
 
 
 # ─── Access requests — customer asks, Auto R&D decides instantly ──────────────

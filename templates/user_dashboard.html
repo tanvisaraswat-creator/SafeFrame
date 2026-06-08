@@ -130,6 +130,9 @@ tr:hover td{background:var(--input)}
 .badge{padding:4px 12px;border-radius:50px;font-weight:700;font-size:11px}
 .badge.green{background:var(--safebg);color:var(--safe)}
 .tag-verified{font-size:10px;font-weight:700;color:var(--teal);background:#E8F8F7;padding:2px 8px;border-radius:50px;margin-left:6px}
+.platform-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--teal);background:#E8F8F7;border:1px solid var(--border);padding:5px 14px;border-radius:50px;margin:6px 0 16px}
+.platform-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0 16px}
+.platform-select{font-size:12px;font-weight:600;color:var(--text2);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer}
 
 #toasts{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:999}
 .toast{background:var(--text);color:#fff;font-size:13px;font-weight:600;padding:11px 20px;border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
@@ -163,6 +166,16 @@ tr:hover td{background:var(--input)}
 
   <div class="main">
     <h1>Welcome back, {{ user.name.split(' ')[0] }}</h1>
+    <div class="platform-row">
+      <span class="platform-pill" id="platform-badge">{{ platform_types.get(platform_type, {}).get('emoji', '🏪') }} {{ platform_types.get(platform_type, {}).get('badge', 'Standard Mode') }}</span>
+      <label style="font-size:12px;font-weight:600;color:var(--text2)">Platform Type:
+        <select class="platform-select" id="platform-select" onchange="setPlatformType(this.value)">
+          {% for key, info in platform_types.items() %}
+          <option value="{{ key }}" {% if key == platform_type %}selected{% endif %}>{{ info.emoji }} {{ info.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
     <div class="sub">Your uploads stay private by default — only people you approve can see them. Drop an image below and SafeFrame will screen it instantly.</div>
 
     <div class="layout">
@@ -285,6 +298,25 @@ const $=id=>document.getElementById(id);
 function toast(msg,err=false){
   const t=document.createElement('div');t.className='toast'+(err?' err':'');
   t.textContent=msg;$('toasts').appendChild(t);setTimeout(()=>t.remove(),4000);
+}
+
+const _platformBadges={
+  fashion:{emoji:'👗',badge:'Fashion Mode'},
+  standard:{emoji:'🏪',badge:'Standard Mode'},
+  children:{emoji:'👶',badge:"Children's Mode"},
+  medical:{emoji:'🏥',badge:'Medical Mode'},
+  enterprise:{emoji:'🏢',badge:'Enterprise Mode'},
+};
+async function setPlatformType(value){
+  try{
+    const fd=new FormData();fd.append('platform_type',value);
+    const res=await fetch('/set-platform-type',{method:'POST',body:fd});
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error||'Could not update platform type');
+    const info=_platformBadges[value]||{emoji:'🏪',badge:'Standard Mode'};
+    $('platform-badge').textContent=info.emoji+' '+info.badge;
+    toast('Platform type set to '+info.badge+' — future uploads use these thresholds');
+  }catch(e){ toast('Error: '+e.message,true) }
 }
 
 const uz=$('uz');

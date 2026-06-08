@@ -24,7 +24,8 @@ from typing import Optional
 from PIL import Image
 from torchvision import transforms
 
-from config import CLASS_NAMES, IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD
+from config import (CLASS_NAMES, IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD,
+                    PLATFORM_THRESHOLDS, PLATFORM_TYPE_LABELS, DEFAULT_PLATFORM_TYPE)
 from model import load_model
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
@@ -325,13 +326,43 @@ class ModerationEngine:
             return "SENSITIVE", "BLUR_WARNING"
         return "SAFE", "ALLOW"
 
+    # ── Platform-Aware Decision Logic ──────────────────────────────────────────
+    # WHAT: decides category/action straight off the model's raw 5-class probs,
+    #       using a brand's chosen Platform Type thresholds (mature/explicit/
+    #       hentai) instead of the generic context profile.
+    # WHY:  brands have very different baselines — a fashion catalogue shows
+    #       skin normally, a children's platform must flag the same image
+    #       instantly. Lower threshold = stricter (flags at lower confidence).
+    @staticmethod
+    def _make_platform_decision(raw_probs: list, thresholds: dict) -> tuple:
+        mature_p   = raw_probs[CLASS_NAMES.index("sexy")]
+        explicit_p = raw_probs[CLASS_NAMES.index("porn")]
+        hentai_p   = raw_probs[CLASS_NAMES.index("hentai")]
+
+        if hentai_p >= thresholds["hentai"]:
+            return "ADULT", "RESTRICT"
+        if explicit_p >= thresholds["explicit"]:
+            return "ADULT", "RESTRICT"
+        if mature_p >= thresholds["mature"]:
+            return "SENSITIVE", "BLUR_WARNING"
+        return "SAFE", "ALLOW"
+
     # ── Public API ─────────────────────────────────────────────────────────────
     def moderate(
         self,
         image_path: str,
         original_filename: str,
         context: str = DEFAULT_CONTEXT,
+        platform_type: Optional[str] = None,
     ) -> ModerationReport:
+        """
+        platform_type: when given (and a brand has chosen one — "fashion",
+        "standard", "children", "medical", "enterprise"), moderation uses that
+        platform's PLATFORM_THRESHOLDS instead of the generic context profile.
+        This lets each brand's uploads be judged against thresholds that fit
+        their business — e.g. a fashion catalogue tolerates more skin than a
+        children's platform would.
+        """
 
         t0 = time.perf_counter()
         profile = get_profile(context)
@@ -349,7 +380,16 @@ class ModerationEngine:
         probs = self._to_label_probs(raw_probs)
 
         # ── Decision ──────────────────────────────────────────────────────────
-        category, action = self._make_decision(probs, profile)
+        # Platform-aware path (brand picked a Platform Type) takes priority
+        # over the generic context-profile decision.
+        if platform_type and platform_type in PLATFORM_THRESHOLDS:
+            thresholds    = PLATFORM_THRESHOLDS[platform_type]
+            category, action = self._make_platform_decision(raw_probs, thresholds)
+            context_label = PLATFORM_TYPE_LABELS.get(platform_type, {}).get("badge", platform_type.title())
+        else:
+            category, action = self._make_decision(probs, profile)
+            context_label = profile["label"]
+
         primary_index = LABEL_NAMES.index(category)
         confidence    = probs[primary_index]
 
@@ -380,7 +420,7 @@ class ModerationEngine:
             requires_age_gate=(action == "RESTRICT"),
             flagged_for_review=(action == "FLAG_FOR_REVIEW"),
             context=context,
-            context_label=profile["label"],
+            context_label=context_label,
         )
 
         logger.info(
