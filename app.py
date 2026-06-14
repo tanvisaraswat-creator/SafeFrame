@@ -262,11 +262,23 @@ def dashboard():
                               "customer_email": cust.get("email", "")})
 
     platform_type = user.get("platform_type", DEFAULT_PLATFORM_TYPE)
+
+    # Pre-compute stats so the template stays logic-free
+    total  = len(my_uploads)
+    safe_n = sum(1 for u in my_uploads
+                 if u.get("action") == "ALLOW" or u.get("verdict") == "SAFE")
+    blur_n = sum(1 for u in my_uploads
+                 if u.get("action") in ("BLUR_WARNING", "FLAG_FOR_REVIEW")
+                 or u.get("verdict") == "REVIEW")
+    block_n = total - safe_n - blur_n
+
     return render_template("user_dashboard.html", user=user,
                            uploads=my_uploads, approved_customers=approved_view,
                            status_labels=STATUS_LABELS,
                            platform_type=platform_type,
-                           platform_types=PLATFORM_TYPE_LABELS)
+                           platform_types=PLATFORM_TYPE_LABELS,
+                           history_stats={"total": total, "safe": safe_n,
+                                          "blurred": blur_n, "blocked": block_n})
 
 
 def _customer_dashboard(user):
@@ -389,9 +401,11 @@ def admin():
         "block": {"count": block_n, "pct": round(block_n / donut_total * 100)},
     }
 
+    api_uploads = sum(1 for u in store.load_uploads() if u.get("source") == "api")
     return render_template("admin.html", user=user, users=users,
                            pending_requests=pending_requests, stats=stats, recent=recent,
-                           status_labels=STATUS_LABELS, chart_days=chart_days, donut=donut)
+                           status_labels=STATUS_LABELS, chart_days=chart_days, donut=donut,
+                           api_uploads=api_uploads)
 
 
 # ─── Brand-user upload (private, tracked per-account) ─────────────────────────
@@ -595,6 +609,139 @@ def set_platform_type():
     store.update_user(user["id"], platform_type=platform_type)
     logger.info("[PLATFORM] %s set platform_type -> %s", user["email"], platform_type)
     return jsonify({"success": True, "platform_type": platform_type}), 200
+
+
+# ─── IMB360 internal moderation API ──────────────────────────────────────────
+@app.route("/api/moderate", methods=["POST"])
+def api_moderate():
+    # WHAT: the endpoint IMB360's backend calls before publishing brand content
+    # WHY:  SafeFrame is the AI moderation *layer* — IMB360 submits content here
+    #       and we return a verdict; IMB360 decides whether to post, blur, or reject
+    # AUTH: X-API-Key header (shared secret — SAFEFRAME_API_KEY from config)
+    # IN:   multipart form — file (image or video), brand_id (email),
+    #                        platform_type (optional override), content_type ("image"|"video")
+    # OUT:  {verdict, confidence, action, flagged_timestamps (video only), brand_id}
+    api_key = (request.headers.get("X-API-Key") or
+               request.form.get("api_key", "")).strip()
+    if api_key != SAFEFRAME_API_KEY:
+        logger.warning("[API] unauthorized moderation attempt from %s", request.remote_addr)
+        return jsonify({"error": "Unauthorized — invalid or missing X-API-Key"}), 401
+
+    brand_id      = request.form.get("brand_id", "").strip()
+    platform_type = request.form.get("platform_type", "").strip() or DEFAULT_PLATFORM_TYPE
+    content_type  = request.form.get("content_type", "image").strip().lower()
+
+    # Validate brand
+    brand_user = store.find_user_by_email(brand_id) if brand_id else None
+    if not brand_user or brand_user["role"] != "brand":
+        return jsonify({"error": "Unknown or invalid brand_id"}), 400
+    if platform_type not in PLATFORM_THRESHOLDS:
+        platform_type = brand_user.get("platform_type", DEFAULT_PLATFORM_TYPE)
+
+    if "file" not in request.files or request.files["file"].filename == "":
+        return jsonify({"error": "No file provided — send as multipart field 'file'"}), 400
+
+    file = request.files["file"]
+
+    # ── Video path ─────────────────────────────────────────────────────────────
+    if content_type == "video":
+        if not allowed_video(file.filename):
+            return jsonify({"error": "Unsupported video format."}), 415
+        ext  = file.filename.rsplit(".", 1)[1].lower()
+        name = f"{uuid.uuid4().hex}.{ext}"
+        path = UPLOAD_DIR / name
+        file.save(str(path))
+        try:
+            eng    = get_engine()
+            result = moderate_video(str(path), eng.model, eng.device)
+        except Exception as exc:
+            path.unlink(missing_ok=True)
+            return jsonify({"error": "Video moderation failed.", "detail": str(exc)}), 500
+
+        thumb_name = f"thumb_{name.rsplit('.', 1)[0]}.jpg"
+        thumb_url  = (f"/api/image/{thumb_name}"
+                      if _extract_thumbnail(path, UPLOAD_DIR / thumb_name) else None)
+
+        record = {
+            "type": "video", "filename": file.filename,
+            "stored_filename": name, "image_url": thumb_url,
+            "video_url": f"/api/image/{name}",
+            "platform_type": platform_type,
+            "verdict": result["verdict"], "action": result["action"],
+            "total_frames_checked": result["total_frames_checked"],
+            "flagged_frames": result["flagged_frames"],
+            "raw_class": "video", "primary_category": result["verdict"],
+            "confidence_pct": 0, "blurred": result["action"] in ("review", "block"),
+            "blocked": result["action"] == "block",
+            "filter_applied": "none", "processing_time_ms": 0,
+            "source": "api",
+        }
+        store.add_upload(brand_user["id"], record)
+        logger.info("[API/VIDEO] %s for brand %s → %s (%d flagged frames)",
+                    file.filename, brand_id, result["verdict"],
+                    len(result["flagged_frames"]))
+        return jsonify({
+            "verdict":            result["verdict"],
+            "action":             result["action"],
+            "flagged_timestamps": [
+                {"time": f["timestamp"], "label": f["label"],
+                 "confidence": round(f["confidence"] * 100, 1)}
+                for f in result["flagged_frames"]
+            ],
+            "brand_id":           brand_id,
+            "platform_type":      platform_type,
+        }), 200
+
+    # ── Image path ─────────────────────────────────────────────────────────────
+    if not allowed_file(file.filename):
+        return jsonify({"error": "Unsupported image format."}), 415
+    ext  = file.filename.rsplit(".", 1)[1].lower()
+    name = f"{uuid.uuid4().hex}.{ext}"
+    path = UPLOAD_DIR / name
+    file.save(str(path))
+    try:
+        eng    = get_engine()
+        report = eng.moderate(str(path), file.filename,
+                               context="standard", platform_type=platform_type)
+        result = report_to_dict(report)
+        if report.blurred:
+            img_bgr = cv2.imread(str(path))
+            if report.raw_class in ("porn", "hentai"):
+                cv2.imwrite(str(path), apply_mask(img_bgr))
+            else:
+                cv2.imwrite(str(path), apply_blur(img_bgr))
+    except Exception as exc:
+        path.unlink(missing_ok=True)
+        return jsonify({"error": "Image moderation failed.", "detail": str(exc)}), 500
+
+    # Map to IMB360's expected verdict vocabulary
+    verdict_map = {"ALLOW": "SAFE", "BLUR_WARNING": "BLUR",
+                   "FLAG_FOR_REVIEW": "BLUR", "RESTRICT": "BLOCK", "BLOCK": "BLOCK"}
+    imb_verdict = verdict_map.get(report.action, report.action)
+
+    record = {
+        "type": "image", "filename": file.filename,
+        "stored_filename": name, "image_url": f"/api/image/{name}",
+        "platform_type": platform_type,
+        "primary_category": result["primary_category"],
+        "raw_class": result["raw_class"], "action": result["action"],
+        "confidence_pct": result["confidence_pct"],
+        "blurred": result["blurred"], "blocked": result["blocked"],
+        "filter_applied": "blurred" if report.blurred else "none",
+        "processing_time_ms": result["processing_time_ms"],
+        "source": "api",
+    }
+    store.add_upload(brand_user["id"], record)
+    logger.info("[API/IMAGE] %s for brand %s → %s (%.1f%%)",
+                file.filename, brand_id, imb_verdict, report.confidence_pct)
+    return jsonify({
+        "verdict":     imb_verdict,
+        "confidence":  round(report.confidence * 100, 1),
+        "action":      report.action,
+        "action_taken": imb_verdict.lower(),
+        "brand_id":    brand_id,
+        "platform_type": platform_type,
+    }), 200
 
 
 # ─── Access requests — customer asks, Auto R&D decides instantly ──────────────

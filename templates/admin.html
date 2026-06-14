@@ -182,13 +182,13 @@ table{font-size:.74rem}th,td{padding:9px 10px} .score-row{grid-template-columns:
 
   <div class="main">
     <h1>Overview</h1>
-    <div class="sub">Monitor uploads, review access requests, and manage every account from one place.</div>
+    <div class="sub">SafeFrame is the AI moderation layer IMB360 calls before publishing brand content. Monitor every scan, review access requests, and manage accounts from here.</div>
 
     <div class="stats">
       <div class="stat-card"><div class="stat-icon">👥</div><div><div class="v">{{ stats.total_users }}</div><div class="k">Total Users</div></div></div>
-      <div class="stat-card"><div class="stat-icon">🛡️</div><div><div class="v">{{ stats.total_uploads }}</div><div class="k">Total Uploads</div></div></div>
-      <div class="stat-card" style="border-left-color:var(--warn)"><div class="stat-icon" style="background:var(--warnbg);color:var(--warn)">⏳</div><div><div class="v" style="color:var(--warn)">{{ stats.pending_manual }}</div><div class="k">Pending Admin Decision</div></div></div>
-      <div class="stat-card" style="border-left-color:var(--safe)"><div class="stat-icon" style="background:var(--safebg);color:var(--safe)">✅</div><div><div class="v" style="color:var(--safe)">{{ stats.decided_today }}</div><div class="k">Decided Today</div></div></div>
+      <div class="stat-card"><div class="stat-icon">🛡️</div><div><div class="v">{{ stats.total_uploads }}</div><div class="k">Scanned for IMB360</div></div></div>
+      <div class="stat-card" style="border-left-color:var(--teal)"><div class="stat-icon" style="background:#E8F8F7">🔌</div><div><div class="v" style="color:var(--teal)">{{ api_uploads }}</div><div class="k">Via API</div></div></div>
+      <div class="stat-card" style="border-left-color:var(--warn)"><div class="stat-icon" style="background:var(--warnbg);color:var(--warn)">⏳</div><div><div class="v" style="color:var(--warn)">{{ stats.pending_manual }}</div><div class="k">Pending Decision</div></div></div>
     </div>
 
     <div class="charts">

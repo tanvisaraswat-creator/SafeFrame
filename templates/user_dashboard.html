@@ -184,13 +184,14 @@ tr:hover td{background:var(--input)}
 
 <div class="shell">
   <div class="sidebar">
-    <div class="side-link active">📤 My Uploads</div>
-    <div class="side-link" onclick="document.getElementById('fi').click()">➕ Upload New Image</div>
+    <div class="side-link active">📋 Moderation History</div>
     <div class="side-link">🏷 My Brand Profile</div>
+    <div class="side-link">👥 Approved Customers</div>
   </div>
 
   <div class="main">
-    <h1>Welcome back, {{ user.name.split(' ')[0] }}</h1>
+    <h1>Content Moderation History</h1>
+    <div class="sub">SafeFrame is the AI moderation layer that IMB360 calls before publishing your content. Every image and video sent on your behalf appears here — read-only.</div>
     <div class="platform-row">
       <span class="platform-pill" id="platform-badge">{{ platform_types.get(platform_type, {}).get('emoji', '🏪') }} {{ platform_types.get(platform_type, {}).get('badge', 'Standard Mode') }}</span>
       <label style="font-size:12px;font-weight:600;color:var(--text2)">Platform Type:
@@ -201,72 +202,30 @@ tr:hover td{background:var(--input)}
         </select>
       </label>
     </div>
-    <div class="sub">Your uploads stay private by default — only people you approve can see them. Drop an image below and SafeFrame will screen it instantly.</div>
 
     <div class="layout">
       <div>
-        {% set safe_n = uploads | selectattr('action','equalto','ALLOW') | list | length %}
-        {% set sens_n = uploads | selectattr('action','in',['BLUR_WARNING','FLAG_FOR_REVIEW']) | list | length %}
-        {% set block_n = uploads | selectattr('action','in',['BLOCK','RESTRICT']) | list | length %}
         <div class="stats">
-          <div class="stat-card"><div class="stat-icon">🛡️</div><div><div class="v">{{ uploads|length }}</div><div class="k">Images Moderated</div></div></div>
-          <div class="stat-card" style="border-left-color:var(--safe)"><div class="stat-icon" style="background:#eafaf0">✅</div><div><div class="v" style="color:var(--safe)">{{ safe_n }}</div><div class="k">Safe Content</div></div></div>
-          <div class="stat-card" style="border-left-color:var(--warn)"><div class="stat-icon" style="background:#fff6e9">⚠️</div><div><div class="v" style="color:var(--warn)">{{ sens_n }}</div><div class="k">Sensitive Flagged</div></div></div>
-          <div class="stat-card" style="border-left-color:var(--danger)"><div class="stat-icon" style="background:#fdecec">🚫</div><div><div class="v" style="color:var(--danger)">{{ block_n }}</div><div class="k">Blocked Content</div></div></div>
+          <div class="stat-card"><div class="stat-icon">🛡️</div><div><div class="v">{{ history_stats.total }}</div><div class="k">Total Scanned</div></div></div>
+          <div class="stat-card" style="border-left-color:var(--safe)"><div class="stat-icon" style="background:#eafaf0">✅</div><div><div class="v" style="color:var(--safe)">{{ history_stats.safe }}</div><div class="k">Passed</div></div></div>
+          <div class="stat-card" style="border-left-color:var(--warn)"><div class="stat-icon" style="background:#fff6e9">⚠️</div><div><div class="v" style="color:var(--warn)">{{ history_stats.blurred }}</div><div class="k">Blurred / Review</div></div></div>
+          <div class="stat-card" style="border-left-color:var(--danger)"><div class="stat-icon" style="background:#fdecec">🚫</div><div><div class="v" style="color:var(--danger)">{{ history_stats.blocked }}</div><div class="k">Blocked</div></div></div>
         </div>
 
-        {% if uploads %}
+        {% if history_stats.total > 0 %}
         <div class="trend-card">
-          <div class="lbl">Your Content Safety Rate</div>
-          {% set pct = ((safe_n / uploads|length) * 100) | round | int %}
+          <div class="lbl">Content Safety Rate — Scanned on your behalf by IMB360</div>
+          {% set pct = ((history_stats.safe / history_stats.total) * 100) | round | int %}
           <div class="bar-track"><div class="bar-fill" style="width:{{ pct }}%"></div></div>
-          <div class="trend-txt"><b>{{ pct }}%</b> of your uploaded content has been classified as safe.</div>
+          <div class="trend-txt"><b>{{ pct }}%</b> of your content passed moderation and was cleared for publishing.</div>
         </div>
         {% endif %}
 
-        <div class="upload-zone" id="uz">
-          <input type="file" id="fi" accept="image/*"/>
-          <div class="uz-icon">📤</div>
-          <div class="uz-title">Drag & drop an image to scan and store it securely</div>
-          <div class="uz-sub">PNG, JPG, GIF, WEBP · up to 16 MB</div>
-        </div>
-
-        <div class="upload-zone video-zone" id="vuz">
-          <input type="file" id="vfi" accept="video/mp4,video/avi,video/quicktime,video/webm,.mp4,.avi,.mov,.webm"/>
-          <div class="uz-icon">🎬</div>
-          <div class="uz-title">Drag & drop a video to scan every frame</div>
-          <div class="uz-sub">MP4, AVI, MOV, WEBM · up to 100 MB · scanned at 1 frame/sec</div>
-          <div class="prog-wrap" id="vprog">
-            <div class="prog-bar"><div class="prog-fill" id="vprog-fill"></div></div>
-            <div class="prog-txt" id="vprog-txt">Scanning frames…</div>
-          </div>
-        </div>
-
-        <div class="video-result" id="vresult">
-          <div class="vr-head">
-            <div class="vr-thumb-ph" id="vthumb-ph">🎬</div>
-            <img class="vr-thumb" id="vthumb" style="display:none" alt=""/>
-            <div>
-              <div class="vr-title" id="vr-filename">—</div>
-              <div style="display:flex;gap:6px;align-items:center;margin:4px 0">
-                <span class="verdict-badge" id="vr-badge">—</span>
-                <span class="vr-meta" id="vr-frames">—</span>
-              </div>
-              <div class="vr-meta" id="vr-summary">—</div>
-            </div>
-          </div>
-          <div class="flagged-list" id="vr-flagged" style="display:none">
-            <div class="fl-title">⚠️ Flagged Timestamps</div>
-            <div id="vr-flags"></div>
-          </div>
-        </div>
-
-        <div class="section-title">My Uploads</div>
+        <div class="section-title">Moderation Log</div>
         {% if uploads %}
         <div class="gallery" id="gallery">
           {% for u in uploads %}
           <div class="g-card" id="card-{{ u.id }}">
-            <button class="del-btn" title="Delete this image" onclick="confirmDelete('{{ u.id }}','{{ u.filename }}')">🗑</button>
             <div class="g-thumb">
               {% if u.get('type') == 'video' %}
                 {% if u.image_url %}
@@ -288,7 +247,7 @@ tr:hover td{background:var(--input)}
                   <div class="g-ov sensitive"><span class="lbl">Sensitive</span><button class="reveal" onclick="reveal(this)">Click to reveal</button></div>
                 {% else %}
                   <img class="masked" src="{{ u.image_url }}" alt=""/>
-                  <div class="g-ov restricted"><span class="lbl">Restricted</span><span class="small">Restricted Content — Admin Only</span></div>
+                  <div class="g-ov restricted"><span class="lbl">Restricted</span><span class="small">Restricted — Not Published</span></div>
                 {% endif %}
               {% endif %}
             </div>
@@ -312,8 +271,8 @@ tr:hover td{background:var(--input)}
         {% else %}
         <div class="empty">
           <div class="shield">🛡️</div>
-          <div class="t1">No images moderated yet</div>
-          <div class="t2">Upload your first image to get started.</div>
+          <div class="t1">No content scanned yet</div>
+          <div class="t2">When IMB360 submits content on your behalf, the moderation log will appear here.</div>
         </div>
         {% endif %}
 
@@ -342,22 +301,34 @@ tr:hover td{background:var(--input)}
       </div>
 
       <div class="panel">
-        <h3>Recent Activity</h3>
+        <h3>IMB360 Activity Feed</h3>
         {% if uploads %}
           {% for u in uploads[:10] %}
-          {% set dotc='var(--green)' %}{% set lbl='Safe' %}
-          {% if u.action in ['BLOCK','RESTRICT'] %}{% set dotc='var(--danger)' %}{% set lbl='Blocked' %}
-          {% elif u.action in ['BLUR_WARNING','FLAG_FOR_REVIEW'] %}{% set dotc='#E65100' %}{% set lbl='Sensitive' %}{% endif %}
-          <div class="feed-item">
-            <span class="feed-dot" style="background:{{ dotc }}"></span>
-            <div>
-              <div class="feed-txt"><b>{{ u.filename[:18] }}</b> → {{ lbl }} ({{ u.raw_class|replace('sexy','Mature Content')|replace('porn','Explicit')|replace('hentai','Illustrated Explicit')|replace('neutral','General')|replace('drawings','Illustrated') }} {{ u.confidence_pct }}%)</div>
-              <div class="feed-time">{{ u.created_at[:16].replace('T',' ') }}</div>
+          {% if u.get('type') == 'video' %}
+            {% set dotc = 'var(--green)' if u.verdict == 'SAFE' else ('var(--danger)' if u.verdict == 'UNSAFE' else '#E65100') %}
+            {% set lbl  = u.verdict|title %}
+            <div class="feed-item">
+              <span class="feed-dot" style="background:{{ dotc }}"></span>
+              <div>
+                <div class="feed-txt"><b>{{ u.filename[:18] }}</b> → 🎬 {{ lbl }} ({{ u.total_frames_checked }} frames)</div>
+                <div class="feed-time">{{ u.created_at[:16].replace('T',' ') }}</div>
+              </div>
             </div>
-          </div>
+          {% else %}
+            {% set dotc='var(--green)' %}{% set lbl='Passed' %}
+            {% if u.action in ['BLOCK','RESTRICT'] %}{% set dotc='var(--danger)' %}{% set lbl='Blocked' %}
+            {% elif u.action in ['BLUR_WARNING','FLAG_FOR_REVIEW'] %}{% set dotc='#E65100' %}{% set lbl='Blurred' %}{% endif %}
+            <div class="feed-item">
+              <span class="feed-dot" style="background:{{ dotc }}"></span>
+              <div>
+                <div class="feed-txt"><b>{{ u.filename[:18] }}</b> → {{ lbl }} ({{ u.raw_class|replace('sexy','Mature Content')|replace('porn','Explicit')|replace('hentai','Illustrated Explicit')|replace('neutral','General')|replace('drawings','Illustrated') }} {{ u.confidence_pct }}%)</div>
+                <div class="feed-time">{{ u.created_at[:16].replace('T',' ') }}</div>
+              </div>
+            </div>
+          {% endif %}
           {% endfor %}
         {% else %}
-          <div style="font-size:12px;color:var(--text3)">No activity yet — your uploads will appear here.</div>
+          <div style="font-size:12px;color:var(--text3)">No moderation activity yet — content submitted by IMB360 on your behalf will appear here.</div>
         {% endif %}
       </div>
     </div>
@@ -388,108 +359,7 @@ async function setPlatformType(value){
     if(!res.ok) throw new Error(data.error||'Could not update platform type');
     const info=_platformBadges[value]||{emoji:'🏪',badge:'Standard Mode'};
     $('platform-badge').textContent=info.emoji+' '+info.badge;
-    toast('Platform type set to '+info.badge+' — future uploads use these thresholds');
-  }catch(e){ toast('Error: '+e.message,true) }
-}
-
-// ── Video upload ────────────────────────────────────────────────────────────
-const vuz=$('vuz');
-vuz.addEventListener('dragover',e=>{e.preventDefault();vuz.classList.add('over')});
-vuz.addEventListener('dragleave',()=>vuz.classList.remove('over'));
-vuz.addEventListener('drop',e=>{e.preventDefault();vuz.classList.remove('over');if(e.dataTransfer.files[0])uploadVideo(e.dataTransfer.files[0])});
-$('vfi').addEventListener('change',e=>{if(e.target.files[0])uploadVideo(e.target.files[0])});
-
-function _fmtTs(secs){
-  const m=Math.floor(secs/60),s=Math.floor(secs%60);
-  return m+':'+(s<10?'0':'')+s;
-}
-
-async function uploadVideo(file){
-  if(file.size>100*1024*1024){toast('Video exceeds 100 MB limit.',true);return}
-  // show progress UI
-  $('vprog').style.display='block';
-  $('vresult').style.display='none';
-  const fill=$('vprog-fill'),txt=$('vprog-txt');
-  // animate bar to 90% while waiting (server does the real work)
-  fill.style.width='0%';
-  txt.textContent='Uploading and scanning frames…';
-  let pct=0;
-  const ticker=setInterval(()=>{
-    pct=Math.min(pct+2,88);
-    fill.style.width=pct+'%';
-  },400);
-
-  try{
-    const fd=new FormData();fd.append('video',file);
-    const res=await fetch('/upload-video',{method:'POST',body:fd});
-    clearInterval(ticker);
-    fill.style.width='100%';
-    const data=await res.json();
-    if(!res.ok)throw new Error(data.error||'Video moderation failed');
-
-    const u=data.upload;
-    const verdict=(u.verdict||'SAFE').toUpperCase();
-    const vBadge=$('vr-badge');
-    vBadge.textContent=verdict;
-    vBadge.className='verdict-badge '+verdict.toLowerCase();
-
-    $('vr-filename').textContent=u.filename||file.name;
-    $('vr-frames').textContent=`${u.total_frames_checked} frames checked`;
-    const n=u.flagged_frames?.length||0;
-    $('vr-summary').textContent=n===0?'No unsafe content detected.':`${n} unsafe frame${n>1?'s':''} detected.`;
-
-    // thumbnail
-    if(u.image_url){
-      $('vthumb').src=u.image_url;
-      $('vthumb').style.display='block';
-      $('vthumb-ph').style.display='none';
-    }
-
-    // flagged timestamp list
-    if(n>0){
-      const fl=$('vr-flags');fl.innerHTML='';
-      (u.flagged_frames||[]).forEach(f=>{
-        const conf=Math.round((f.confidence||0)*100);
-        const row=document.createElement('div');row.className='flag-item';
-        row.innerHTML=`<span class="flag-ts">${_fmtTs(f.timestamp)}</span><span class="flag-lbl">${f.label||'Unsafe Content'} detected</span><span style="font-size:11px;font-weight:700;color:var(--danger)">${conf}%</span>`;
-        fl.appendChild(row);
-      });
-      $('vr-flagged').style.display='block';
-    }else{
-      $('vr-flagged').style.display='none';
-    }
-
-    $('vprog').style.display='none';
-    $('vresult').style.display='block';
-    txt.textContent='Done';
-    const msgMap={SAFE:'Video passed — no unsafe content found.',REVIEW:'Video flagged for admin review.',UNSAFE:'Video blocked — unsafe content detected.'};
-    toast(msgMap[verdict]||(verdict+' — scan complete'));
-    setTimeout(()=>location.reload(),1800);
-  }catch(e){
-    clearInterval(ticker);
-    $('vprog').style.display='none';
-    toast('Video error: '+e.message,true);
-  }
-}
-
-// ── Image upload ────────────────────────────────────────────────────────────
-const uz=$('uz');
-uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('over')});
-uz.addEventListener('dragleave',()=>uz.classList.remove('over'));
-uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('over');if(e.dataTransfer.files[0])upload(e.dataTransfer.files[0])});
-$('fi').addEventListener('change',e=>{if(e.target.files[0])upload(e.target.files[0])});
-
-async function upload(file){
-  if(!file.type.startsWith('image/')){toast('Please choose an image file.',true);return}
-  const fd=new FormData();fd.append('image',file);
-  toast('Uploading and analysing…');
-  try{
-    const res=await fetch('/upload',{method:'POST',body:fd});
-    const data=await res.json();
-    if(!res.ok) throw new Error(data.error||'Upload failed');
-    const _rcLabels={sexy:'Mature Content',porn:'Explicit',hentai:'Illustrated Explicit',neutral:'General',drawings:'Illustrated'};
-    toast('Uploaded — classified as '+(_rcLabels[data.upload.raw_class]||data.upload.raw_class)+' ('+data.upload.confidence_pct+'%)');
-    setTimeout(()=>location.reload(),900);
+    toast('Platform type updated to '+info.badge);
   }catch(e){ toast('Error: '+e.message,true) }
 }
 
@@ -497,43 +367,6 @@ function reveal(btn){
   const card=btn.closest('.g-thumb');
   card.querySelector('img').classList.remove('blurred');
   card.querySelector('.g-ov').remove();
-}
-
-function confirmDelete(uploadId, filename){
-  if(!window.confirm('Delete this image? This cannot be undone.')) return;
-  deleteUpload(uploadId);
-}
-
-async function deleteUpload(uploadId){
-  const fd=new FormData(); fd.append('upload_id', uploadId);
-  try{
-    const res=await fetch('/delete-upload',{method:'POST',body:fd});
-    const data=await res.json();
-    if(!res.ok) throw new Error(data.error||'Delete failed');
-    const card=$('card-'+uploadId);
-    if(card){
-      card.classList.add('removing');
-      setTimeout(()=>{
-        card.remove();
-        decrementStats();
-        const gallery=$('gallery');
-        if(gallery && !gallery.querySelector('.g-card')) location.reload(); // show empty state
-      }, 220);
-    }
-    toast('Image deleted');
-  }catch(e){ toast('Error: '+e.message,true) }
-}
-
-function decrementStats(){
-  // WHAT: keep the "Images Moderated" stat (and nothing else — we don't know
-  //       which safe/sensitive/blocked bucket the deleted image was in without
-  //       a reload) in sync immediately after a delete
-  // WHY:  instant visual feedback; a full reload would also be correct but slower
-  const totalEl = document.querySelector('.stat-card .v');
-  if(totalEl){
-    const n = parseInt(totalEl.textContent, 10);
-    if(!isNaN(n) && n > 0) totalEl.textContent = n - 1;
-  }
 }
 </script>
 </body>
