@@ -135,6 +135,92 @@ def moderate_image(image_path: str, model=None, device=None) -> dict:
     }
 
 
+def classify_frame_array(frame_bgr: np.ndarray,
+                         model: torch.nn.Module,
+                         device: torch.device) -> tuple:
+    # WHAT: classify a raw OpenCV BGR frame (no disk I/O needed)
+    # WHY:  moderate_video() has frames as numpy arrays, not file paths,
+    #       so we convert in-memory instead of writing a temp file
+    # IN:   frame_bgr (H×W×3 uint8 numpy array), model, device
+    # OUT:  (class_name, confidence, all_probs) — same shape as classify_image()
+    image  = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+    tensor = TRANSFORM(image).unsqueeze(0).to(device)
+    with torch.no_grad():
+        logits = model(tensor)
+        probs  = torch.softmax(logits, dim=1).squeeze(0)
+    confidence, idx = probs.max(dim=0)
+    return CLASS_NAMES[idx.item()], confidence.item(), probs.tolist()
+
+
+def moderate_video(video_path: str,
+                   model: torch.nn.Module,
+                   device: torch.device) -> dict:
+    # WHAT: sample one frame per second, classify each, tally unsafe hits
+    # WHY:  a single unsafe frame can hide anywhere in a video — checking
+    #       every second gives coverage without being prohibitively slow
+    # IN:   video_path (str), model, device
+    # OUT:  {verdict, total_frames_checked, flagged_frames, action}
+    #         verdict  SAFE   → 0 unsafe frames   → action "pass"
+    #                  REVIEW → 1–2 unsafe frames  → action "review"
+    #                  UNSAFE → 3+ unsafe frames   → action "block"
+
+    from config import VIDEO_FRAME_INTERVAL, VIDEO_UNSAFE_FRAME_THRESHOLD
+
+    _display = {
+        "sexy":   "Mature Content",
+        "porn":   "Explicit Content",
+        "hentai": "Illustrated Explicit",
+    }
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        return {
+            "verdict": "ERROR", "error": "Could not open video file",
+            "total_frames_checked": 0, "flagged_frames": [], "action": "block",
+        }
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps <= 0:
+        fps = 25.0
+    frame_step   = max(1, int(round(fps * VIDEO_FRAME_INTERVAL)))
+    total_checked = 0
+    flagged_frames = []
+    frame_idx    = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if frame_idx % frame_step == 0:
+            cls, conf, _ = classify_frame_array(frame, model, device)
+            if cls not in SAFE_CLASSES:
+                flagged_frames.append({
+                    "timestamp":  round(frame_idx / fps, 1),
+                    "label":      _display.get(cls, cls),
+                    "raw_class":  cls,
+                    "confidence": round(conf, 4),
+                })
+            total_checked += 1
+        frame_idx += 1
+
+    cap.release()
+
+    n = len(flagged_frames)
+    if n == 0:
+        verdict, action = "SAFE", "pass"
+    elif n < VIDEO_UNSAFE_FRAME_THRESHOLD:
+        verdict, action = "REVIEW", "review"
+    else:
+        verdict, action = "UNSAFE", "block"
+
+    return {
+        "verdict":               verdict,
+        "total_frames_checked":  total_checked,
+        "flagged_frames":        flagged_frames,
+        "action":                action,
+    }
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:

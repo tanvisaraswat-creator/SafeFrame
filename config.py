@@ -78,6 +78,16 @@ PLATFORM_THRESHOLDS = {
 
 DEFAULT_PLATFORM_TYPE = "standard"
 
+# ── Video Moderation Settings ──────────────────────────────────────────────────
+SUPPORTED_VIDEO_FORMATS    = [".mp4", ".avi", ".mov", ".webm"]
+MAX_VIDEO_SIZE             = 100 * 1024 * 1024   # 100 MB
+VIDEO_FRAME_INTERVAL       = 1                   # sample every N seconds
+VIDEO_UNSAFE_FRAME_THRESHOLD = 3                 # frames at/above this → block
+
+# ── API Access ─────────────────────────────────────────────────────────────────
+import os as _os
+SAFEFRAME_API_KEY = _os.environ.get("SAFEFRAME_API_KEY", "sf-dev-key-imb360")
+
 # Display labels + emoji for the brand "Platform Type" selector / badge
 PLATFORM_TYPE_LABELS = {
     "fashion":    {"label": "Fashion & Apparel",    "emoji": "👗", "badge": "Fashion Mode"},

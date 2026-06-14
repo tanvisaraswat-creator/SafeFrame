@@ -132,6 +132,31 @@ tr:hover td{background:var(--input)}
 .tag-verified{font-size:10px;font-weight:700;color:var(--teal);background:#E8F8F7;padding:2px 8px;border-radius:50px;margin-left:6px}
 .platform-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--teal);background:#E8F8F7;border:1px solid var(--border);padding:5px 14px;border-radius:50px;margin:6px 0 16px}
 .platform-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0 16px}
+
+/* video upload zone */
+.upload-zone.video-zone{border-color:#B0C4DE;background:#F4F8FF}
+.upload-zone.video-zone .uz-icon{background:linear-gradient(135deg,#4A90D9,#6A5ACD)}
+.upload-zone.video-zone.over,.upload-zone.video-zone:hover{border-color:#4A90D9;border-style:solid}
+.prog-wrap{margin:10px 0 0;display:none}
+.prog-bar{height:6px;border-radius:50px;background:var(--surface);overflow:hidden;margin-bottom:6px}
+.prog-fill{height:100%;border-radius:50px;background:linear-gradient(90deg,#4A90D9,#6A5ACD);width:0%;transition:width .3s}
+.prog-txt{font-size:11px;color:var(--text3);text-align:center}
+.video-result{border:1px solid var(--border);border-radius:var(--r2);background:var(--card);padding:16px;margin-top:16px;animation:fadeUp .3s ease both;display:none}
+.video-result .vr-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.video-result .vr-thumb{width:80px;height:56px;border-radius:8px;object-fit:cover;background:#eee;flex-shrink:0}
+.video-result .vr-thumb-ph{width:80px;height:56px;border-radius:8px;background:#E8F8F7;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+.verdict-badge{padding:4px 12px;border-radius:50px;font-weight:700;font-size:11px}
+.verdict-badge.safe{background:var(--safebg);color:var(--safe)}
+.verdict-badge.review{background:var(--warnbg);color:var(--warn)}
+.verdict-badge.unsafe{background:var(--dangerbg);color:var(--danger)}
+.vr-title{font-weight:700;font-size:13px;margin-bottom:2px}
+.vr-meta{font-size:11px;color:var(--text3)}
+.flagged-list{margin-top:8px;border-top:1px solid var(--border);padding-top:10px}
+.flagged-list .fl-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px}
+.flag-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);padding:4px 0;border-bottom:1px solid var(--border)}
+.flag-item:last-child{border-bottom:none}
+.flag-ts{font-weight:700;color:var(--danger);font-size:11px;font-variant-numeric:tabular-nums;min-width:44px}
+.flag-lbl{flex:1}
 .platform-select{font-size:12px;font-weight:600;color:var(--text2);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer}
 
 #toasts{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:999}
@@ -206,6 +231,36 @@ tr:hover td{background:var(--input)}
           <div class="uz-sub">PNG, JPG, GIF, WEBP · up to 16 MB</div>
         </div>
 
+        <div class="upload-zone video-zone" id="vuz">
+          <input type="file" id="vfi" accept="video/mp4,video/avi,video/quicktime,video/webm,.mp4,.avi,.mov,.webm"/>
+          <div class="uz-icon">🎬</div>
+          <div class="uz-title">Drag & drop a video to scan every frame</div>
+          <div class="uz-sub">MP4, AVI, MOV, WEBM · up to 100 MB · scanned at 1 frame/sec</div>
+          <div class="prog-wrap" id="vprog">
+            <div class="prog-bar"><div class="prog-fill" id="vprog-fill"></div></div>
+            <div class="prog-txt" id="vprog-txt">Scanning frames…</div>
+          </div>
+        </div>
+
+        <div class="video-result" id="vresult">
+          <div class="vr-head">
+            <div class="vr-thumb-ph" id="vthumb-ph">🎬</div>
+            <img class="vr-thumb" id="vthumb" style="display:none" alt=""/>
+            <div>
+              <div class="vr-title" id="vr-filename">—</div>
+              <div style="display:flex;gap:6px;align-items:center;margin:4px 0">
+                <span class="verdict-badge" id="vr-badge">—</span>
+                <span class="vr-meta" id="vr-frames">—</span>
+              </div>
+              <div class="vr-meta" id="vr-summary">—</div>
+            </div>
+          </div>
+          <div class="flagged-list" id="vr-flagged" style="display:none">
+            <div class="fl-title">⚠️ Flagged Timestamps</div>
+            <div id="vr-flags"></div>
+          </div>
+        </div>
+
         <div class="section-title">My Uploads</div>
         {% if uploads %}
         <div class="gallery" id="gallery">
@@ -213,23 +268,41 @@ tr:hover td{background:var(--input)}
           <div class="g-card" id="card-{{ u.id }}">
             <button class="del-btn" title="Delete this image" onclick="confirmDelete('{{ u.id }}','{{ u.filename }}')">🗑</button>
             <div class="g-thumb">
-              {% set rc = u.raw_class %}
-              {% if rc in ['neutral','drawings'] %}
-                <img src="{{ u.image_url }}" alt=""/>
-              {% elif rc == 'sexy' %}
-                <img class="blurred" src="{{ u.image_url }}" alt=""/>
-                <div class="g-ov sensitive"><span class="lbl">Sensitive</span><button class="reveal" onclick="reveal(this)">Click to reveal</button></div>
+              {% if u.get('type') == 'video' %}
+                {% if u.image_url %}
+                  <img src="{{ u.image_url }}" alt="" style="{% if u.verdict in ['REVIEW','UNSAFE'] %}filter:blur(8px) saturate(.5){% endif %}"/>
+                {% else %}
+                  <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:36px;background:#E8F0FA">🎬</div>
+                {% endif %}
+                {% if u.verdict == 'UNSAFE' %}
+                  <div class="g-ov restricted"><span class="lbl">Blocked</span><span class="small">Unsafe content detected</span></div>
+                {% elif u.verdict == 'REVIEW' %}
+                  <div class="g-ov sensitive"><span class="lbl">Review</span><span class="small">Flagged for admin review</span></div>
+                {% endif %}
               {% else %}
-                <img class="masked" src="{{ u.image_url }}" alt=""/>
-                <div class="g-ov restricted"><span class="lbl">Restricted</span><span class="small">Restricted Content — Admin Only</span></div>
+                {% set rc = u.raw_class %}
+                {% if rc in ['neutral','drawings'] %}
+                  <img src="{{ u.image_url }}" alt=""/>
+                {% elif rc == 'sexy' %}
+                  <img class="blurred" src="{{ u.image_url }}" alt=""/>
+                  <div class="g-ov sensitive"><span class="lbl">Sensitive</span><button class="reveal" onclick="reveal(this)">Click to reveal</button></div>
+                {% else %}
+                  <img class="masked" src="{{ u.image_url }}" alt=""/>
+                  <div class="g-ov restricted"><span class="lbl">Restricted</span><span class="small">Restricted Content — Admin Only</span></div>
+                {% endif %}
               {% endif %}
             </div>
             <div class="g-body">
               <div class="g-name">{{ u.filename }}</div>
               <div class="g-meta">
-                {% set v='safe' %}
-                {% if u.action in ['BLOCK','RESTRICT'] %}{% set v='blocked' %}{% elif u.action in ['BLUR_WARNING','FLAG_FOR_REVIEW'] %}{% set v='sensitive' %}{% endif %}
-                <span class="tag {{ v }}">{{ u.raw_class|replace('sexy','Mature Content')|replace('porn','Explicit')|replace('hentai','Illustrated Explicit')|replace('neutral','General')|replace('drawings','Illustrated') }} · {{ u.confidence_pct }}%</span>
+                {% if u.get('type') == 'video' %}
+                  {% set v = 'safe' if u.verdict == 'SAFE' else ('blocked' if u.verdict == 'UNSAFE' else 'sensitive') %}
+                  <span class="tag {{ v }}">🎬 {{ u.verdict }} · {{ u.total_frames_checked }} frames</span>
+                {% else %}
+                  {% set v='safe' %}
+                  {% if u.action in ['BLOCK','RESTRICT'] %}{% set v='blocked' %}{% elif u.action in ['BLUR_WARNING','FLAG_FOR_REVIEW'] %}{% set v='sensitive' %}{% endif %}
+                  <span class="tag {{ v }}">{{ u.raw_class|replace('sexy','Mature Content')|replace('porn','Explicit')|replace('hentai','Illustrated Explicit')|replace('neutral','General')|replace('drawings','Illustrated') }} · {{ u.confidence_pct }}%</span>
+                {% endif %}
                 <span>{{ u.created_at[:10] }}</span>
               </div>
             </div>
@@ -319,6 +392,87 @@ async function setPlatformType(value){
   }catch(e){ toast('Error: '+e.message,true) }
 }
 
+// ── Video upload ────────────────────────────────────────────────────────────
+const vuz=$('vuz');
+vuz.addEventListener('dragover',e=>{e.preventDefault();vuz.classList.add('over')});
+vuz.addEventListener('dragleave',()=>vuz.classList.remove('over'));
+vuz.addEventListener('drop',e=>{e.preventDefault();vuz.classList.remove('over');if(e.dataTransfer.files[0])uploadVideo(e.dataTransfer.files[0])});
+$('vfi').addEventListener('change',e=>{if(e.target.files[0])uploadVideo(e.target.files[0])});
+
+function _fmtTs(secs){
+  const m=Math.floor(secs/60),s=Math.floor(secs%60);
+  return m+':'+(s<10?'0':'')+s;
+}
+
+async function uploadVideo(file){
+  if(file.size>100*1024*1024){toast('Video exceeds 100 MB limit.',true);return}
+  // show progress UI
+  $('vprog').style.display='block';
+  $('vresult').style.display='none';
+  const fill=$('vprog-fill'),txt=$('vprog-txt');
+  // animate bar to 90% while waiting (server does the real work)
+  fill.style.width='0%';
+  txt.textContent='Uploading and scanning frames…';
+  let pct=0;
+  const ticker=setInterval(()=>{
+    pct=Math.min(pct+2,88);
+    fill.style.width=pct+'%';
+  },400);
+
+  try{
+    const fd=new FormData();fd.append('video',file);
+    const res=await fetch('/upload-video',{method:'POST',body:fd});
+    clearInterval(ticker);
+    fill.style.width='100%';
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Video moderation failed');
+
+    const u=data.upload;
+    const verdict=(u.verdict||'SAFE').toUpperCase();
+    const vBadge=$('vr-badge');
+    vBadge.textContent=verdict;
+    vBadge.className='verdict-badge '+verdict.toLowerCase();
+
+    $('vr-filename').textContent=u.filename||file.name;
+    $('vr-frames').textContent=`${u.total_frames_checked} frames checked`;
+    const n=u.flagged_frames?.length||0;
+    $('vr-summary').textContent=n===0?'No unsafe content detected.':`${n} unsafe frame${n>1?'s':''} detected.`;
+
+    // thumbnail
+    if(u.image_url){
+      $('vthumb').src=u.image_url;
+      $('vthumb').style.display='block';
+      $('vthumb-ph').style.display='none';
+    }
+
+    // flagged timestamp list
+    if(n>0){
+      const fl=$('vr-flags');fl.innerHTML='';
+      (u.flagged_frames||[]).forEach(f=>{
+        const conf=Math.round((f.confidence||0)*100);
+        const row=document.createElement('div');row.className='flag-item';
+        row.innerHTML=`<span class="flag-ts">${_fmtTs(f.timestamp)}</span><span class="flag-lbl">${f.label||'Unsafe Content'} detected</span><span style="font-size:11px;font-weight:700;color:var(--danger)">${conf}%</span>`;
+        fl.appendChild(row);
+      });
+      $('vr-flagged').style.display='block';
+    }else{
+      $('vr-flagged').style.display='none';
+    }
+
+    $('vprog').style.display='none';
+    $('vresult').style.display='block';
+    txt.textContent='Done';
+    const msgMap={SAFE:'Video passed — no unsafe content found.',REVIEW:'Video flagged for admin review.',UNSAFE:'Video blocked — unsafe content detected.'};
+    toast(msgMap[verdict]||(verdict+' — scan complete'));
+    setTimeout(()=>location.reload(),1800);
+  }catch(e){
+    clearInterval(ticker);
+    $('vprog').style.display='none';
+    toast('Video error: '+e.message,true);
+  }
+}
+
+// ── Image upload ────────────────────────────────────────────────────────────
 const uz=$('uz');
 uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('over')});
 uz.addEventListener('dragleave',()=>uz.classList.remove('over'));

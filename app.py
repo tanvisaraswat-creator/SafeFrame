@@ -29,8 +29,9 @@ from flask import (
     render_template, abort, session, redirect, url_for,
 )
 from moderation_engine import ModerationEngine, report_to_dict, CONTEXT_PROFILES
-from moderate import apply_blur, apply_mask
-from config import PLATFORM_THRESHOLDS, PLATFORM_TYPE_LABELS, DEFAULT_PLATFORM_TYPE
+from moderate import apply_blur, apply_mask, moderate_video
+from config import (PLATFORM_THRESHOLDS, PLATFORM_TYPE_LABELS, DEFAULT_PLATFORM_TYPE,
+                    SUPPORTED_VIDEO_FORMATS, MAX_VIDEO_SIZE, SAFEFRAME_API_KEY)
 import store
 import auto_rd
 
@@ -40,8 +41,9 @@ UPLOAD_DIR      = BASE_DIR / "static" / "uploads"
 LOG_FILE        = BASE_DIR / "logs" / "moderation_log.json"
 TEMPLATES_DIR   = BASE_DIR / "templates"
 
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
-MAX_CONTENT_LENGTH  = 16 * 1024 * 1024   # 16 MB
+ALLOWED_EXTENSIONS       = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
+ALLOWED_VIDEO_EXTENSIONS = {"mp4", "avi", "mov", "webm"}
+MAX_CONTENT_LENGTH       = 100 * 1024 * 1024   # 100 MB (covers video uploads)
 
 # Create directories
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -70,6 +72,25 @@ def get_engine() -> ModerationEngine:
 def allowed_file(filename: str) -> bool:
     return "." in filename and \
            filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def allowed_video(filename: str) -> bool:
+    return "." in filename and \
+           filename.rsplit(".", 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
+
+def _extract_thumbnail(video_path: Path, thumb_path: Path) -> bool:
+    """Pull the first readable frame from a video and save it as a JPEG thumbnail."""
+    cap = cv2.VideoCapture(str(video_path))
+    saved = False
+    for _ in range(30):           # try up to the 30th frame in case early ones are black
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if frame.mean() > 8:      # skip nearly-black frames
+            cv2.imwrite(str(thumb_path), frame)
+            saved = True
+            break
+    cap.release()
+    return saved
 
 
 def load_log() -> list[dict]:
@@ -431,6 +452,87 @@ def user_upload():
     saved = store.add_upload(user["id"], record)
     logger.info("[UPLOAD] %s by %s -> %s (%s)", file.filename, user["email"],
                 saved["raw_class"], saved["action"])
+    return jsonify({"success": True, "upload": saved}), 200
+
+
+@app.route("/upload-video", methods=["POST"])
+@login_required
+def upload_video():
+    # WHAT: accept a brand video upload, moderate it frame-by-frame, store result
+    # WHY:  video can hide unsafe content in any frame — scanning the whole clip
+    #       before it goes anywhere protects downstream viewers
+    # IN:   multipart "video" file field (mp4/avi/mov/webm, max 100 MB)
+    # OUT:  JSON {success, upload} where upload includes verdict + flagged_frames
+    user = current_user()
+    if user["role"] != "brand":
+        abort(403)
+
+    if "video" not in request.files or request.files["video"].filename == "":
+        return jsonify({"error": "No video file provided."}), 400
+
+    file = request.files["video"]
+    if not allowed_video(file.filename):
+        return jsonify({"error": "Unsupported video format. Allowed: mp4, avi, mov, webm."}), 415
+
+    # Check file size against MAX_VIDEO_SIZE (Content-Length header is a hint)
+    content_len = request.content_length
+    if content_len and content_len > MAX_VIDEO_SIZE:
+        return jsonify({"error": "Video too large. Maximum size is 100 MB."}), 413
+
+    ext         = file.filename.rsplit(".", 1)[1].lower()
+    unique_name = f"{uuid.uuid4().hex}.{ext}"
+    save_path   = UPLOAD_DIR / unique_name
+
+    try:
+        file.save(str(save_path))
+    except Exception as exc:
+        logger.error("Video save failed: %s", exc)
+        return jsonify({"error": "Failed to save video file."}), 500
+
+    # Double-check saved size
+    if save_path.stat().st_size > MAX_VIDEO_SIZE:
+        save_path.unlink(missing_ok=True)
+        return jsonify({"error": "Video too large. Maximum size is 100 MB."}), 413
+
+    try:
+        eng     = get_engine()
+        result  = moderate_video(str(save_path), eng.model, eng.device)
+    except Exception as exc:
+        logger.error("Video moderation failed: %s", exc)
+        save_path.unlink(missing_ok=True)
+        return jsonify({"error": "Video moderation failed.", "detail": str(exc)}), 500
+
+    # Extract a thumbnail from the first non-black frame
+    thumb_name = f"thumb_{unique_name.rsplit('.', 1)[0]}.jpg"
+    thumb_path = UPLOAD_DIR / thumb_name
+    thumb_url  = f"/api/image/{thumb_name}" if _extract_thumbnail(save_path, thumb_path) else None
+
+    platform_type = user.get("platform_type", DEFAULT_PLATFORM_TYPE)
+    record = {
+        "type":                  "video",
+        "filename":              file.filename,
+        "stored_filename":       unique_name,
+        "image_url":             thumb_url,            # thumbnail used in gallery
+        "video_url":             f"/api/image/{unique_name}",
+        "platform_type":         platform_type,
+        "verdict":               result["verdict"],
+        "action":                result["action"],
+        "total_frames_checked":  result["total_frames_checked"],
+        "flagged_frames":        result["flagged_frames"],
+        # keep image-upload compat fields so the store/templates don't break
+        "raw_class":             "video",
+        "primary_category":      result["verdict"],
+        "confidence_pct":        0,
+        "blurred":               result["action"] in ("review", "block"),
+        "blocked":               result["action"] == "block",
+        "filter_applied":        "none",
+        "processing_time_ms":    0,
+    }
+    saved = store.add_upload(user["id"], record)
+    logger.info("[VIDEO] %s by %s → verdict=%s flagged=%d/%d frames",
+                file.filename, user["email"],
+                result["verdict"], len(result["flagged_frames"]),
+                result["total_frames_checked"])
     return jsonify({"success": True, "upload": saved}), 200
 
 
