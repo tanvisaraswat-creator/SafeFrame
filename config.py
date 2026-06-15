@@ -3,6 +3,11 @@
 
 from pathlib import Path
 
+# ── Storage backend ────────────────────────────────────────────────────────────
+# True  → SQLite via store_sqlite.py  (default for v1.1+)
+# False → JSON files via store_json.py (instant rollback if anything breaks)
+USE_DATABASE = True
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 BASE_DIR       = Path(__file__).parent
 UPLOADS_DIR    = BASE_DIR / "static" / "uploads"

@@ -36,6 +36,11 @@ logs/moderation_log.json
 # ── Multi-user JSON "database" (runtime data, not source) ─────────────────────
 data_store/*.json
 
+# ── SQLite database (runtime data, not source — regenerate via migrate.py) ────
+safeframe.db
+safeframe.db-wal
+safeframe.db-shm
+
 # ── API Keys and Secrets ───────────────────────────────────────────────────────
 .env
 .env.local
