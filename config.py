@@ -88,6 +88,8 @@ SUPPORTED_VIDEO_FORMATS    = [".mp4", ".avi", ".mov", ".webm"]
 MAX_VIDEO_SIZE             = 100 * 1024 * 1024   # 100 MB
 VIDEO_FRAME_INTERVAL       = 1                   # sample every N seconds
 VIDEO_UNSAFE_FRAME_THRESHOLD = 3                 # frames at/above this → block
+VIDEO_CLIP_FRAMES            = 16               # frames to sample for temporal ensemble
+VIDEO_TEMPORAL_THRESHOLD     = 0.45             # averaged unsafe-class probability → escalate
 
 # ── API Access ─────────────────────────────────────────────────────────────────
 import os as _os

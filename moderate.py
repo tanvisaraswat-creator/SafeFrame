@@ -14,6 +14,7 @@ from config import (
     CLASS_NAMES, SAFE_CLASSES, BLUR_KERNEL, MASK_COLOR,
     BLUR_THRESHOLD, FLAG_THRESHOLD, RESULTS_DIR, FLAGS_DIR,
     IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD,
+    VIDEO_CLIP_FRAMES, VIDEO_TEMPORAL_THRESHOLD,
 )
 from model import load_model
 
@@ -152,6 +153,115 @@ def classify_frame_array(frame_bgr: np.ndarray,
     return CLASS_NAMES[idx.item()], confidence.item(), probs.tolist()
 
 
+def moderate_video_temporal(video_path: str,
+                            model: torch.nn.Module,
+                            device: torch.device) -> dict:
+    # WHAT: Late-fusion temporal ensemble — extract VIDEO_CLIP_FRAMES evenly
+    #       spaced frames, run each through ResNet50, average the probability
+    #       vectors, decide on the pooled result.
+    # WHY:  Stage 1 (per-second frame scan) catches clear-cut cases fast.
+    #       For borderline REVIEW cases (1–2 flagged frames) the raw counts
+    #       are noisy — a single unusual frame can flip the verdict.
+    #       Averaging 16 probability vectors across the whole clip smooths
+    #       that noise: if unsafe signal is real it survives the average;
+    #       if it was a one-off artefact it gets diluted.
+    # IN:   video_path (str), model, device
+    # OUT:  {verdict, confidence, stage, method, avg_probs, flagged_frames}
+    #         stage   "temporal"  — always, so callers can log which path ran
+    #         method  "late_fusion_ensemble"
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        return {
+            "verdict": "REVIEW", "confidence": 0.0,
+            "stage": "temporal", "method": "late_fusion_ensemble",
+            "error": "Could not re-open video for temporal pass",
+        }
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps          = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    cap.release()
+
+    # Choose VIDEO_CLIP_FRAMES evenly spaced indices across the clip
+    n_samples = min(VIDEO_CLIP_FRAMES, max(1, total_frames))
+    if n_samples == 1:
+        indices = [0]
+    else:
+        step    = (total_frames - 1) / (n_samples - 1)
+        indices = [int(round(i * step)) for i in range(n_samples)]
+
+    cap = cv2.VideoCapture(str(video_path))
+    prob_accumulator = np.zeros(len(CLASS_NAMES), dtype=np.float64)
+    frames_read = 0
+    flagged_temporal = []
+
+    _display = {
+        "sexy":   "Mature Content",
+        "porn":   "Explicit Content",
+        "hentai": "Illustrated Explicit",
+    }
+
+    for target_idx in indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, target_idx)
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            continue
+        _, _, probs = classify_frame_array(frame, model, device)
+        prob_vec = np.array(probs, dtype=np.float64)
+        prob_accumulator += prob_vec
+        frames_read += 1
+
+        # Track per-frame unsafe hits for the flagged_frames list
+        cls_idx    = int(np.argmax(prob_vec))
+        cls_name   = CLASS_NAMES[cls_idx]
+        cls_conf   = float(prob_vec[cls_idx])
+        if cls_name not in SAFE_CLASSES:
+            flagged_temporal.append({
+                "timestamp":  round(target_idx / fps, 1),
+                "label":      _display.get(cls_name, cls_name),
+                "raw_class":  cls_name,
+                "confidence": round(cls_conf, 4),
+            })
+
+    cap.release()
+
+    if frames_read == 0:
+        return {
+            "verdict": "REVIEW", "confidence": 0.0,
+            "stage": "temporal", "method": "late_fusion_ensemble",
+            "flagged_frames": [],
+        }
+
+    avg_probs = (prob_accumulator / frames_read).tolist()
+
+    # Unsafe probability = sum of all unsafe class averages
+    unsafe_indices = [CLASS_NAMES.index(c) for c in CLASS_NAMES if c not in SAFE_CLASSES]
+    unsafe_prob    = sum(avg_probs[i] for i in unsafe_indices)
+    top_idx        = int(np.argmax(avg_probs))
+    top_class      = CLASS_NAMES[top_idx]
+    top_conf       = avg_probs[top_idx]
+
+    if unsafe_prob >= VIDEO_TEMPORAL_THRESHOLD:
+        verdict = "UNSAFE"
+        action  = "block"
+    else:
+        verdict = "SAFE"
+        action  = "pass"
+
+    return {
+        "verdict":        verdict,
+        "action":         action,
+        "confidence":     round(unsafe_prob * 100, 1),
+        "top_class":      top_class,
+        "top_confidence": round(top_conf * 100, 1),
+        "avg_probs":      [round(p, 4) for p in avg_probs],
+        "frames_sampled": frames_read,
+        "flagged_frames": flagged_temporal,
+        "stage":          "temporal",
+        "method":         "late_fusion_ensemble",
+    }
+
+
 def moderate_video(video_path: str,
                    model: torch.nn.Module,
                    device: torch.device) -> dict:
@@ -213,12 +323,33 @@ def moderate_video(video_path: str,
     else:
         verdict, action = "UNSAFE", "block"
 
-    return {
+    # Stage 2: temporal ensemble for uncertain REVIEW cases only.
+    # SAFE and UNSAFE are decided by Stage 1 alone — no need to spend
+    # extra compute when the frame scan is already conclusive.
+    stage = "frame_detection"
+    temporal_result = None
+
+    if verdict == "REVIEW":
+        temporal_result = moderate_video_temporal(video_path, model, device)
+        if "error" not in temporal_result:
+            verdict = temporal_result["verdict"]
+            action  = temporal_result["action"]
+            stage   = "temporal"
+            # Use the temporal flagged_frames list (16-frame sample) so the
+            # timestamps align with the ensemble pass, not the per-second scan
+            flagged_frames = temporal_result.get("flagged_frames", flagged_frames)
+
+    result = {
         "verdict":               verdict,
         "total_frames_checked":  total_checked,
         "flagged_frames":        flagged_frames,
         "action":                action,
+        "stage":                 stage,
     }
+    if temporal_result and "error" not in temporal_result:
+        result["temporal_confidence"] = temporal_result.get("confidence", 0)
+        result["frames_sampled"]      = temporal_result.get("frames_sampled", 0)
+    return result
 
 
 if __name__ == "__main__":

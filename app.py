@@ -29,7 +29,7 @@ from flask import (
     render_template, abort, session, redirect, url_for,
 )
 from moderation_engine import ModerationEngine, report_to_dict, CONTEXT_PROFILES
-from moderate import apply_blur, apply_mask, moderate_video
+from moderate import apply_blur, apply_mask, moderate_video, moderate_video_temporal
 from config import (PLATFORM_THRESHOLDS, PLATFORM_TYPE_LABELS, DEFAULT_PLATFORM_TYPE,
                     SUPPORTED_VIDEO_FORMATS, MAX_VIDEO_SIZE, SAFEFRAME_API_KEY)
 import store
@@ -533,20 +533,23 @@ def upload_video():
         "action":                result["action"],
         "total_frames_checked":  result["total_frames_checked"],
         "flagged_frames":        result["flagged_frames"],
+        "analysis_stage":        result.get("stage", "frame_detection"),
+        "temporal_confidence":   result.get("temporal_confidence"),
+        "frames_sampled":        result.get("frames_sampled"),
         # keep image-upload compat fields so the store/templates don't break
         "raw_class":             "video",
         "primary_category":      result["verdict"],
-        "confidence_pct":        0,
+        "confidence_pct":        result.get("temporal_confidence", 0),
         "blurred":               result["action"] in ("review", "block"),
         "blocked":               result["action"] == "block",
         "filter_applied":        "none",
         "processing_time_ms":    0,
     }
     saved = store.add_upload(user["id"], record)
-    logger.info("[VIDEO] %s by %s → verdict=%s flagged=%d/%d frames",
+    logger.info("[VIDEO] %s by %s → verdict=%s stage=%s flagged=%d/%d frames",
                 file.filename, user["email"],
-                result["verdict"], len(result["flagged_frames"]),
-                result["total_frames_checked"])
+                result["verdict"], result.get("stage", "frame_detection"),
+                len(result["flagged_frames"]), result["total_frames_checked"])
     return jsonify({"success": True, "upload": saved}), 200
 
 
@@ -670,26 +673,32 @@ def api_moderate():
             "verdict": result["verdict"], "action": result["action"],
             "total_frames_checked": result["total_frames_checked"],
             "flagged_frames": result["flagged_frames"],
+            "analysis_stage": result.get("stage", "frame_detection"),
+            "temporal_confidence": result.get("temporal_confidence"),
+            "frames_sampled": result.get("frames_sampled"),
             "raw_class": "video", "primary_category": result["verdict"],
-            "confidence_pct": 0, "blurred": result["action"] in ("review", "block"),
+            "confidence_pct": result.get("temporal_confidence", 0),
+            "blurred": result["action"] in ("review", "block"),
             "blocked": result["action"] == "block",
             "filter_applied": "none", "processing_time_ms": 0,
             "source": "api",
         }
         store.add_upload(brand_user["id"], record)
-        logger.info("[API/VIDEO] %s for brand %s → %s (%d flagged frames)",
+        logger.info("[API/VIDEO] %s for brand %s → %s stage=%s (%d flagged frames)",
                     file.filename, brand_id, result["verdict"],
+                    result.get("stage", "frame_detection"),
                     len(result["flagged_frames"]))
         return jsonify({
-            "verdict":            result["verdict"],
-            "action":             result["action"],
+            "verdict":             result["verdict"],
+            "action":              result["action"],
+            "analysis_stage":      result.get("stage", "frame_detection"),
             "flagged_timestamps": [
                 {"time": f["timestamp"], "label": f["label"],
                  "confidence": round(f["confidence"] * 100, 1)}
                 for f in result["flagged_frames"]
             ],
-            "brand_id":           brand_id,
-            "platform_type":      platform_type,
+            "brand_id":            brand_id,
+            "platform_type":       platform_type,
         }), 200
 
     # ── Image path ─────────────────────────────────────────────────────────────

@@ -257,6 +257,11 @@ tr:hover td{background:var(--input)}
                 {% if u.get('type') == 'video' %}
                   {% set v = 'safe' if u.verdict == 'SAFE' else ('blocked' if u.verdict == 'UNSAFE' else 'sensitive') %}
                   <span class="tag {{ v }}">🎬 {{ u.verdict }} · {{ u.total_frames_checked }} frames</span>
+                  {% if u.get('analysis_stage') == 'temporal' %}
+                    <span class="tag" style="background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE" title="Late-fusion temporal ensemble — 16 evenly-spaced frames averaged">⏱ Temporal Ensemble</span>
+                  {% else %}
+                    <span class="tag" style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0" title="Per-second frame scan — Stage 1 decision">🔍 Frame Detection</span>
+                  {% endif %}
                 {% else %}
                   {% set v='safe' %}
                   {% if u.action in ['BLOCK','RESTRICT'] %}{% set v='blocked' %}{% elif u.action in ['BLUR_WARNING','FLAG_FOR_REVIEW'] %}{% set v='sensitive' %}{% endif %}
