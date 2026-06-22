@@ -90,6 +90,10 @@ VIDEO_FRAME_INTERVAL       = 1                   # sample every N seconds
 VIDEO_UNSAFE_FRAME_THRESHOLD = 3                 # frames at/above this → block
 VIDEO_CLIP_FRAMES            = 16               # frames to sample for temporal ensemble
 VIDEO_TEMPORAL_THRESHOLD     = 0.45             # averaged unsafe-class probability → escalate
+VIDEO_START_DURATION         = 10              # seconds to scan at the start of a video
+VIDEO_END_DURATION           = 10              # seconds to scan at the end of a video
+VIDEO_SAMPLE_INTERVAL        = 30              # seconds between mid-video sample points
+VIDEO_THREAD_WORKERS         = 4               # parallel threads for frame decode/prep
 
 # ── API Access ─────────────────────────────────────────────────────────────────
 import os as _os

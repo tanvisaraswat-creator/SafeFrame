@@ -4,7 +4,9 @@
 import cv2
 import torch
 import json
+import threading
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
 from torchvision import transforms
 from datetime import datetime
@@ -15,6 +17,8 @@ from config import (
     BLUR_THRESHOLD, FLAG_THRESHOLD, RESULTS_DIR, FLAGS_DIR,
     IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD,
     VIDEO_CLIP_FRAMES, VIDEO_TEMPORAL_THRESHOLD,
+    VIDEO_START_DURATION, VIDEO_END_DURATION,
+    VIDEO_SAMPLE_INTERVAL, VIDEO_THREAD_WORKERS,
 )
 from model import load_model
 
@@ -259,6 +263,212 @@ def moderate_video_temporal(video_path: str,
         "flagged_frames": flagged_temporal,
         "stage":          "temporal",
         "method":         "late_fusion_ensemble",
+    }
+
+
+_INFERENCE_LOCK = threading.Lock()
+
+_DISPLAY_LABELS = {
+    "sexy":   "Mature Content",
+    "porn":   "Explicit Content",
+    "hentai": "Illustrated Explicit",
+}
+
+_UNSAFE_INDICES = [i for i, c in enumerate(CLASS_NAMES) if c not in SAFE_CLASSES]
+
+
+def _read_frame_at(video_path: str, frame_idx: int) -> tuple[int, np.ndarray | None]:
+    # WHAT: open a private VideoCapture, seek to frame_idx, return it
+    # WHY:  cv2.VideoCapture is NOT thread-safe — each worker needs its own
+    #       handle. The model inference step is serialised separately via lock.
+    cap = cv2.VideoCapture(str(video_path))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+    ret, frame = cap.read()
+    cap.release()
+    return frame_idx, (frame if ret and frame is not None else None)
+
+
+def _classify_frame_locked(frame_bgr: np.ndarray,
+                            model: torch.nn.Module,
+                            device: torch.device) -> list:
+    # WHAT: thread-safe model inference — acquires _INFERENCE_LOCK before
+    #       calling the model so concurrent threads don't race on GPU state
+    # WHY:  PyTorch model.forward() is not re-entrant across threads; the GIL
+    #       alone is insufficient because CUDA ops release it internally
+    image  = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+    tensor = TRANSFORM(image).unsqueeze(0).to(device)
+    with _INFERENCE_LOCK:
+        with torch.no_grad():
+            logits = model(tensor)
+            probs  = torch.softmax(logits, dim=1).squeeze(0)
+    return probs.tolist()
+
+
+def moderate_video_smart(video_path: str,
+                         model: torch.nn.Module,
+                         device: torch.device) -> dict:
+    # WHAT: Smart video moderation — samples only key sections, processes frames
+    #       in parallel, and averages probability vectors per section.
+    # WHY:  Scanning every frame of a long video is slow. Most harmful content
+    #       appears in the intro, outro, or in regular intervals — not randomly
+    #       distributed. Sampling those sections gives fast, accurate coverage.
+    #
+    # Sampling strategy:
+    #   • First VIDEO_START_DURATION seconds  (intro check)
+    #   • Every VIDEO_SAMPLE_INTERVAL seconds in the middle
+    #   • Last VIDEO_END_DURATION seconds     (outro check)
+    #
+    # Parallel execution:
+    #   • VIDEO_THREAD_WORKERS threads handle frame decode (cv2, CPU-bound)
+    #   • Model inference is serialised via _INFERENCE_LOCK (GPU-safe)
+    #
+    # Decision:
+    #   • Explicit class (porn/hentai) detected → action "block"
+    #   • Mature class (sexy) detected          → action "blur"
+    #   • Neither                               → action "pass"
+    #
+    # IN:   video_path (str), model, device
+    # OUT:  {verdict, action, flagged_sections, total_frames_checked,
+    #        flagged_frames, stage, method}
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        return {
+            "verdict": "ERROR", "error": "Could not open video file",
+            "total_frames_checked": 0, "flagged_frames": [],
+            "flagged_sections": [], "action": "block",
+            "stage": "smart", "method": "smart_section_sampling",
+        }
+
+    fps          = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration_s   = total_frames / fps
+    cap.release()
+
+    # ── Build the list of (section_label, frame_idx) pairs to check ──────────
+    frame_indices: list[tuple[str, int]] = []
+
+    start_end_f = min(int(VIDEO_START_DURATION * fps), total_frames)
+    # 1 frame per second within start window
+    for fi in range(0, start_end_f, max(1, int(fps))):
+        frame_indices.append(("start", fi))
+
+    # Mid-video: every VIDEO_SAMPLE_INTERVAL seconds between start and end windows
+    mid_start_s = VIDEO_START_DURATION
+    mid_end_s   = max(VIDEO_START_DURATION, duration_s - VIDEO_END_DURATION)
+    t = mid_start_s + VIDEO_SAMPLE_INTERVAL
+    while t < mid_end_s:
+        frame_indices.append(("middle", int(t * fps)))
+        t += VIDEO_SAMPLE_INTERVAL
+
+    end_start_f = max(0, total_frames - int(VIDEO_END_DURATION * fps))
+    for fi in range(end_start_f, total_frames, max(1, int(fps))):
+        if ("end", fi) not in frame_indices:
+            frame_indices.append(("end", fi))
+
+    # Deduplicate (start/end windows can overlap on very short clips)
+    seen: set[int] = set()
+    unique_pairs: list[tuple[str, int]] = []
+    for label, fi in frame_indices:
+        if fi not in seen:
+            seen.add(fi)
+            unique_pairs.append((label, fi))
+
+    # ── Parallel frame read (CPU) + serialised inference (GPU) ───────────────
+    # Submit all frame reads in parallel; inference runs one at a time inside
+    # _classify_frame_locked, but the decode/resize/toTensor prep overlaps.
+    results_by_idx: dict[int, tuple[str, list]] = {}  # frame_idx → (section, probs)
+
+    def _process(label: str, fi: int) -> tuple[int, str, list | None]:
+        _, frame = _read_frame_at(video_path, fi)
+        if frame is None:
+            return fi, label, None
+        probs = _classify_frame_locked(frame, model, device)
+        return fi, label, probs
+
+    with ThreadPoolExecutor(max_workers=VIDEO_THREAD_WORKERS) as pool:
+        futures = {pool.submit(_process, lbl, fi): (lbl, fi)
+                   for lbl, fi in unique_pairs}
+        for fut in as_completed(futures):
+            fi, label, probs = fut.result()
+            if probs is not None:
+                results_by_idx[fi] = (label, probs)
+
+    # ── Section-level averaging ───────────────────────────────────────────────
+    section_probs: dict[str, list[list]] = {"start": [], "middle": [], "end": []}
+    for fi, (label, probs) in results_by_idx.items():
+        section_probs[label].append(probs)
+
+    flagged_sections: list[dict] = []
+    flagged_frames:   list[dict] = []
+    has_explicit = False
+    has_mature   = False
+
+    for section_name in ("start", "middle", "end"):
+        frames = section_probs[section_name]
+        if not frames:
+            continue
+        avg = np.mean(frames, axis=0)  # shape: (num_classes,)
+        top_idx  = int(np.argmax(avg))
+        top_cls  = CLASS_NAMES[top_idx]
+        top_conf = float(avg[top_idx])
+
+        if top_cls not in SAFE_CLASSES:
+            unsafe_sum = float(sum(avg[i] for i in _UNSAFE_INDICES))
+            # Map section to representative timestamp for reporting
+            if section_name == "start":
+                ts = 0.0
+            elif section_name == "end":
+                ts = round(duration_s - VIDEO_END_DURATION, 1)
+            else:
+                ts = round(VIDEO_START_DURATION + VIDEO_SAMPLE_INTERVAL, 1)
+
+            flagged_sections.append({
+                "section":    section_name,
+                "timestamp":  ts,
+                "label":      _DISPLAY_LABELS.get(top_cls, top_cls),
+                "raw_class":  top_cls,
+                "confidence": round(top_conf, 4),
+                "unsafe_sum": round(unsafe_sum, 4),
+            })
+            if top_cls in ("porn", "hentai"):
+                has_explicit = True
+            elif top_cls == "sexy":
+                has_mature = True
+
+    # Individual unsafe frames (for flagged_frames list in store record)
+    for fi in sorted(results_by_idx):
+        label, probs = results_by_idx[fi]
+        top_idx  = int(np.argmax(probs))
+        top_cls  = CLASS_NAMES[top_idx]
+        top_conf = probs[top_idx]
+        if top_cls not in SAFE_CLASSES:
+            flagged_frames.append({
+                "timestamp":  round(fi / fps, 1),
+                "label":      _DISPLAY_LABELS.get(top_cls, top_cls),
+                "raw_class":  top_cls,
+                "confidence": round(top_conf, 4),
+                "section":    results_by_idx[fi][0],
+            })
+
+    # ── Final verdict ─────────────────────────────────────────────────────────
+    if has_explicit:
+        verdict, action = "UNSAFE", "block"
+    elif has_mature:
+        verdict, action = "REVIEW", "blur"
+    elif flagged_sections:
+        verdict, action = "REVIEW", "review"
+    else:
+        verdict, action = "SAFE", "pass"
+
+    return {
+        "verdict":               verdict,
+        "action":                action,
+        "flagged_sections":      flagged_sections,
+        "flagged_frames":        flagged_frames,
+        "total_frames_checked":  len(results_by_idx),
+        "stage":                 "smart",
+        "method":                "smart_section_sampling",
     }
 
 

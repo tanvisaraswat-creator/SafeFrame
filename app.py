@@ -29,7 +29,7 @@ from flask import (
     render_template, abort, session, redirect, url_for,
 )
 from moderation_engine import ModerationEngine, report_to_dict, CONTEXT_PROFILES
-from moderate import apply_blur, apply_mask, moderate_video, moderate_video_temporal
+from moderate import apply_blur, apply_mask, moderate_video, moderate_video_temporal, moderate_video_smart
 from config import (PLATFORM_THRESHOLDS, PLATFORM_TYPE_LABELS, DEFAULT_PLATFORM_TYPE,
                     SUPPORTED_VIDEO_FORMATS, MAX_VIDEO_SIZE, SAFEFRAME_API_KEY)
 import store
@@ -509,8 +509,8 @@ def upload_video():
         return jsonify({"error": "Video too large. Maximum size is 100 MB."}), 413
 
     try:
-        eng     = get_engine()
-        result  = moderate_video(str(save_path), eng.model, eng.device)
+        eng    = get_engine()
+        result = moderate_video_smart(str(save_path), eng.model, eng.device)
     except Exception as exc:
         logger.error("Video moderation failed: %s", exc)
         save_path.unlink(missing_ok=True)
@@ -526,30 +526,31 @@ def upload_video():
         "type":                  "video",
         "filename":              file.filename,
         "stored_filename":       unique_name,
-        "image_url":             thumb_url,            # thumbnail used in gallery
+        "image_url":             thumb_url,
         "video_url":             f"/api/image/{unique_name}",
         "platform_type":         platform_type,
         "verdict":               result["verdict"],
         "action":                result["action"],
         "total_frames_checked":  result["total_frames_checked"],
         "flagged_frames":        result["flagged_frames"],
-        "analysis_stage":        result.get("stage", "frame_detection"),
-        "temporal_confidence":   result.get("temporal_confidence"),
-        "frames_sampled":        result.get("frames_sampled"),
-        # keep image-upload compat fields so the store/templates don't break
+        "flagged_sections":      result.get("flagged_sections", []),
+        "analysis_stage":        result.get("stage", "smart"),
+        "analysis_method":       result.get("method", "smart_section_sampling"),
+        # compat fields
         "raw_class":             "video",
         "primary_category":      result["verdict"],
-        "confidence_pct":        result.get("temporal_confidence", 0),
-        "blurred":               result["action"] in ("review", "block"),
+        "confidence_pct":        0,
+        "blurred":               result["action"] in ("review", "blur", "block"),
         "blocked":               result["action"] == "block",
         "filter_applied":        "none",
         "processing_time_ms":    0,
     }
     saved = store.add_upload(user["id"], record)
-    logger.info("[VIDEO] %s by %s → verdict=%s stage=%s flagged=%d/%d frames",
-                file.filename, user["email"],
-                result["verdict"], result.get("stage", "frame_detection"),
-                len(result["flagged_frames"]), result["total_frames_checked"])
+    logger.info(
+        "[VIDEO/SMART] %s by %s → verdict=%s action=%s sections=%d frames=%d",
+        file.filename, user["email"], result["verdict"], result["action"],
+        len(result.get("flagged_sections", [])), result["total_frames_checked"],
+    )
     return jsonify({"success": True, "upload": saved}), 200
 
 
